@@ -7,16 +7,19 @@ import { drizzle } from "drizzle-orm/libsql";
 
 import * as schema from "./schema";
 
-const dbDir = path.join(process.cwd(), "data");
-
-if (!fs.existsSync(dbDir)) {
-  fs.mkdirSync(dbDir, { recursive: true });
-}
-
 const databaseUrl =
   process.env.TURSO_DATABASE_URL ??
   process.env.DATABASE_URL ??
   "file:data/kebab.sqlite";
+
+if (databaseUrl.startsWith("file:")) {
+  const dbPath = databaseUrl.replace(/^file:/, "");
+  const dbDir = path.dirname(path.join(process.cwd(), dbPath));
+
+  if (!fs.existsSync(dbDir)) {
+    fs.mkdirSync(dbDir, { recursive: true });
+  }
+}
 
 const authToken =
   process.env.TURSO_AUTH_TOKEN ?? process.env.DATABASE_AUTH_TOKEN;
