@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
-import { db, ensureDatabase } from "@/db";
+import { databaseSource, db, ensureDatabase } from "@/db";
 import * as schema from "@/db/schema";
 import { ensureAuthSeed } from "@/lib/auth";
 
@@ -59,6 +59,7 @@ export async function GET() {
   }));
 
   return NextResponse.json({
+    databaseSource,
     dailyPerformance,
     locations,
     materials: materialPayload,

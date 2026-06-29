@@ -74,6 +74,7 @@ type DetailReportType = Exclude<ReportType, "Penjualan" | "Opname Stok">;
 type TransactionType = Exclude<ReportType, "Opname Stok">;
 
 type BackendBootstrap = {
+  databaseSource: string;
   dailyPerformance: DailyPerformanceRow[];
   materials: Material[];
   monthlyParameters: Array<{
@@ -872,14 +873,36 @@ export default function Home() {
     }
   }
 
-  async function handleLogin(role: UserRole, password: string) {
-    const email =
-      role === "Admin"
-        ? "admin@yudhistira.local"
-        : "operator@yudhistira.local";
+  async function handleLogin(username: string, role: UserRole, password: string) {
+    const normalizedUsername = username.trim().toLowerCase();
+
+    if (!normalizedUsername) {
+      throw new Error("Username wajib diisi.");
+    }
+
+    const usersResponse = await fetch("/api/users", { cache: "no-store" });
+
+    if (!usersResponse.ok) {
+      throw new Error("Gagal mengambil data user.");
+    }
+
+    const usersPayload = (await usersResponse.json()) as {
+      users?: Array<{ email: string; name: string; role: UserRole }>;
+    };
+    const targetUser = usersPayload.users?.find(
+      (user) =>
+        user.role === role &&
+        (user.name.trim().toLowerCase() === normalizedUsername ||
+          user.email.trim().toLowerCase() === normalizedUsername)
+    );
+
+    if (!targetUser) {
+      throw new Error("Username atau role tidak ditemukan.");
+    }
+
     const response = await fetch("/api/auth/sign-in/email", {
       body: JSON.stringify({
-        email,
+        email: targetUser.email,
         password,
         rememberMe: true
       }),
@@ -998,6 +1021,11 @@ export default function Home() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {backendData?.databaseSource ? (
+              <Badge className="hidden md:inline-flex" variant="success">
+                {backendData.databaseSource}
+              </Badge>
+            ) : null}
             <Badge className="hidden sm:inline-flex" variant="warning">
               {currentRole}
             </Badge>
@@ -1181,9 +1209,14 @@ export default function Home() {
           <div className="border-b border-amber-200 bg-white/80 px-4 py-4 shadow-sm backdrop-blur md:px-6">
             <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">
-                  Senin, 29 Juni 2026
-                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-sm text-muted-foreground">
+                    Senin, 29 Juni 2026
+                  </p>
+                  {backendData?.databaseSource ? (
+                    <Badge variant="success">{backendData.databaseSource}</Badge>
+                  ) : null}
+                </div>
                 <h1 className="mt-1 text-2xl font-bold tracking-normal md:text-3xl">
                   {title}
                 </h1>
@@ -1209,6 +1242,7 @@ export default function Home() {
                 criticalItems={criticalItems}
                 dailyPerformance={backendData?.dailyPerformance ?? dailyKioskPerformance}
                 materials={appMaterials}
+                reports={backendData?.reports}
                 totalAdditionalIncome={totalAdditionalIncome}
                 totalMonthlyCost={totalMonthlyCost}
               />
@@ -1318,6 +1352,7 @@ function DashboardView({
   criticalItems,
   dailyPerformance,
   materials,
+  reports,
   totalAdditionalIncome,
   totalMonthlyCost
 }: {
@@ -1329,18 +1364,37 @@ function DashboardView({
   }>;
   dailyPerformance: DailyPerformanceRow[];
   materials: Material[];
+  reports?: TransactionReportRow[];
   totalAdditionalIncome: number;
   totalMonthlyCost: number;
 }) {
   const [selectedChartKiosk, setSelectedChartKiosk] = useState("Kios Wadas");
+  const salesReports = reports?.filter((report) => report.type === "Penjualan");
+  const expenseReports =
+    reports?.filter((report) => report.type === "Biaya Lain Lain") ?? [];
+  const dashboardDailyRows =
+    salesReports === undefined
+      ? dailyPerformance
+      : salesReports.map((report) => {
+          const modal = sumDetailsByItem(report, "Modal Penjualan");
+          const salary = sumDetailsByItem(report, "Gaji Karyawan");
+          const otherCost = sumDetailsByItem(report, "Lain lain");
+
+          return {
+            date: report.date,
+            kiosk: report.location,
+            laba: report.total - modal - salary - otherCost,
+            omset: report.total
+          };
+        });
   const dailyLabels = Array.from(
-    new Set(dailyPerformance.map((item) => item.date))
+    new Set(dashboardDailyRows.map((item) => item.date))
   );
-  const selectedDailyRows = dailyPerformance.filter(
+  const selectedDailyRows = dashboardDailyRows.filter(
     (item) => item.kiosk === selectedChartKiosk
   );
   const totalDailyRows = dailyLabels.map((date) => {
-    const rows = dailyPerformance.filter((item) => item.date === date);
+    const rows = dashboardDailyRows.filter((item) => item.date === date);
 
     return {
       date,
@@ -1348,12 +1402,48 @@ function DashboardView({
       omset: rows.reduce((sum, row) => sum + row.omset, 0)
     };
   });
-  const dashboardOmset =
-    dailyPerformance.reduce((sum, row) => sum + row.omset, 0) || monthlyFinance.omset;
+  const dashboardOmset = dashboardDailyRows.reduce((sum, row) => sum + row.omset, 0);
+  const dashboardModal =
+    salesReports?.reduce(
+      (sum, report) => sum + sumDetailsByItem(report, "Modal Penjualan"),
+      0
+    ) ?? monthlyFinance.modal;
+  const dashboardGaji =
+    salesReports?.reduce(
+      (sum, report) => sum + sumDetailsByItem(report, "Gaji Karyawan"),
+      0
+    ) ?? monthlyFinance.gaji;
+  const dashboardGrabGofood =
+    salesReports?.reduce(
+      (sum, report) => sum + sumDetailsByItem(report, "Grab/GoFood"),
+      0
+    ) ?? monthlyFinance.grabGofood;
+  const dashboardOtherCost =
+    (salesReports?.reduce(
+      (sum, report) => sum + sumDetailsByItem(report, "Lain lain"),
+      0
+    ) ?? 0) + expenseReports.reduce((sum, report) => sum + report.total, 0);
   const dashboardLaba =
-    dailyPerformance.reduce((sum, row) => sum + row.laba, 0) -
+    dashboardOmset -
+    dashboardModal -
+    dashboardGaji -
+    dashboardOtherCost -
     totalMonthlyCost +
     totalAdditionalIncome;
+  const dashboardActivities =
+    reports === undefined
+      ? activityLog.map((log) => ({
+          activity: log.action,
+          module: log.module,
+          time: log.time,
+          user: log.user
+        }))
+      : reports.slice(0, 5).map((report) => ({
+          activity: report.note,
+          module: report.type,
+          time: report.date,
+          user: report.location
+        }));
   const kpis = [
     {
       title: "Omset Bulanan",
@@ -1369,9 +1459,9 @@ function DashboardView({
     },
     {
       title: "Modal Bahan",
-      value: formatCurrency(monthlyFinance.modal),
+      value: formatCurrency(dashboardModal),
       icon: Archive,
-      note: "Estimasi modal bahan terjual"
+      note: "Modal bahan dari transaksi Turso"
     },
     {
       title: "Nilai Stok Gudang",
@@ -1474,13 +1564,13 @@ function DashboardView({
           label="Gaji"
           note="Pengurang laba operasional"
           tone="rose"
-          value={formatCurrency(monthlyFinance.gaji)}
+          value={formatCurrency(dashboardGaji)}
         />
         <FinancialMetricCard
           icon={Store}
           label="Grab/GoFood"
           note="Pengurang cash yang diterima owner"
-          value={formatCurrency(monthlyFinance.grabGofood)}
+          value={formatCurrency(dashboardGrabGofood)}
         />
         <FinancialMetricCard
           icon={Calculator}
@@ -1544,12 +1634,22 @@ function DashboardView({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {activityLog.map((log) => (
-                <TableRow key={`${log.time}-${log.module}`}>
+              {dashboardActivities.length === 0 ? (
+                <TableRow>
+                  <TableCell
+                    className="py-8 text-center text-sm font-medium text-muted-foreground"
+                    colSpan={4}
+                  >
+                    Belum ada aktivitas transaksi di Turso.
+                  </TableCell>
+                </TableRow>
+              ) : null}
+              {dashboardActivities.map((log) => (
+                <TableRow key={`${log.time}-${log.module}-${log.activity}`}>
                   <TableCell className="font-medium">{log.time}</TableCell>
                   <TableCell>{log.user}</TableCell>
                   <TableCell>{log.module}</TableCell>
-                  <TableCell>{log.action}</TableCell>
+                  <TableCell>{log.activity}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -1713,7 +1813,8 @@ function SalesView({
     0
   );
   const profitDeductions = totalSalesModal + salesCosts.salary + salesCosts.otherCost;
-  const ownerCashReceived = totalSales - salesCosts.grabGofood;
+  const ownerCashReceived =
+    totalSales - salesCosts.grabGofood - salesCosts.salary - salesCosts.otherCost;
   const [saveStatus, setSaveStatus] = useState("");
 
   function setKioskSaleQty(code: string, value: number) {
@@ -2325,18 +2426,25 @@ function LoginUserView({
   onLogin
 }: {
   currentRole: UserRole;
-  onLogin: (role: UserRole, password: string) => Promise<void>;
+  onLogin: (username: string, role: UserRole, password: string) => Promise<void>;
 }) {
   const [selectedRole, setSelectedRole] = useState<UserRole>(currentRole);
   const [loginError, setLoginError] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
+  const [username, setUsername] = useState<string>(currentRole);
   const [password, setPassword] = useState("admin123");
+
+  function selectRole(role: UserRole) {
+    setSelectedRole(role);
+    setUsername(role);
+    setPassword(role === "Admin" ? "admin123" : "operator123");
+  }
 
   async function submitLogin() {
     setLoginError("");
     setLoginLoading(true);
     try {
-      await onLogin(selectedRole, password);
+      await onLogin(username, selectedRole, password);
     } catch (error) {
       setLoginError(error instanceof Error ? error.message : "Login gagal.");
     } finally {
@@ -2365,10 +2473,7 @@ function LoginUserView({
           {(["Admin", "Operator"] as UserRole[]).map((role) => (
             <button
               key={role}
-              onClick={() => {
-                setSelectedRole(role);
-                setPassword(role === "Admin" ? "admin123" : "operator123");
-              }}
+              onClick={() => selectRole(role)}
               className={`rounded-md px-3 py-2.5 text-sm font-bold transition-colors ${
                 selectedRole === role
                   ? "bg-amber-950 text-amber-50 shadow-sm"
@@ -2382,8 +2487,9 @@ function LoginUserView({
         <Field label="Username">
           <Input
             className="font-medium"
-            readOnly
-            value={selectedRole === "Admin" ? "admin@yudhistira.local" : "operator@yudhistira.local"}
+            placeholder="Contoh: Admin atau Operator"
+            value={username}
+            onChange={(event) => setUsername(event.target.value)}
           />
         </Field>
         <Field label="Password">
@@ -2398,7 +2504,7 @@ function LoginUserView({
         <Field label="Role User">
           <Select
             value={selectedRole}
-            onChange={(event) => setSelectedRole(event.target.value as UserRole)}
+            onChange={(event) => selectRole(event.target.value as UserRole)}
           >
             <option value="Admin">Admin</option>
             <option value="Operator">Operator</option>
@@ -2923,7 +3029,7 @@ function FinanceView({
     : monthOptions;
   const [selectedMonth, setSelectedMonth] = useState("Juni 2026");
   const monthReports = filterByMonth(reportRows, selectedMonth);
-  const useFallbackFinance = reportRows.length === 0;
+  const useFallbackFinance = reports === undefined;
   const salesReports = monthReports.filter((report) => report.type === "Penjualan");
   const expenseReports = monthReports.filter(
     (report) => report.type === "Biaya Lain Lain"
@@ -2963,7 +3069,8 @@ function FinanceView({
     finance.otherCost -
     totalMonthlyCost +
     totalAdditionalIncome;
-  const ownerCash = finance.omset - finance.grabGofood;
+  const ownerCash =
+    finance.omset - finance.grabGofood - finance.gaji - finance.otherCost;
 
   const totalDeductions =
     finance.modal + finance.gaji + finance.otherCost + totalMonthlyCost;
@@ -3075,7 +3182,7 @@ function FinanceView({
                 <TableCell className="font-black text-amber-800">
                   {formatCurrency(ownerCash)}
                 </TableCell>
-                <TableCell>Omset dikurangi Grab/GoFood</TableCell>
+                <TableCell>Omset dikurangi Grab/GoFood, gaji, dan lain lain</TableCell>
               </TableRow>
               <TableRow className="bg-emerald-50">
                 <TableCell className="font-bold">Laba Bersih Bulan Ini</TableCell>
@@ -3373,8 +3480,8 @@ function SalesReport({ reports }: { reports?: TransactionReportRow[] }) {
   const [activeTab, setActiveTab] = useState<"Kios Bubulak" | "Kios Ciherang" | "Kios Wadas" | "Total Penjualan">("Kios Wadas");
   const [selectedMonth, setSelectedMonth] = useState("Juni 2026");
   const tabs = ["Kios Wadas", "Kios Ciherang", "Kios Bubulak", "Total Penjualan"] as const;
-  const backendRows = reports?.length ? reports.map(toDailySalesReportRow) : [];
-  const sourceRows = backendRows.length ? backendRows : dailySalesReports;
+  const sourceRows =
+    reports === undefined ? dailySalesReports : reports.map(toDailySalesReportRow);
   const reportMonths = getAvailableMonths(sourceRows);
   const monthRows = filterByMonth(sourceRows, selectedMonth);
   const rows =
@@ -3385,7 +3492,7 @@ function SalesReport({ reports }: { reports?: TransactionReportRow[] }) {
         );
   const summary = rows.reduce(
     (total, row) => ({
-      cash: total.cash + row.sales - row.grabGofood,
+      cash: total.cash + row.sales - row.grabGofood - row.salary - row.otherCost,
       gross: total.gross + row.sales - row.modal,
       modal: total.modal + row.modal,
       net: total.net + row.sales - row.modal - row.salary - row.otherCost,
@@ -3460,8 +3567,18 @@ function SalesReport({ reports }: { reports?: TransactionReportRow[] }) {
               </TableRow>
             </TableHeader>
             <TableBody>
+              {rows.length === 0 ? (
+                <TableRow>
+                  <TableCell
+                    className="py-8 text-center text-sm font-medium text-muted-foreground"
+                    colSpan={activeTab === "Total Penjualan" ? 11 : 10}
+                  >
+                    Belum ada data penjualan di Turso untuk periode ini.
+                  </TableCell>
+                </TableRow>
+              ) : null}
               {rows.map((row) => {
-                const cash = row.sales - row.grabGofood;
+                const cash = row.sales - row.grabGofood - row.salary - row.otherCost;
                 const gross = row.sales - row.modal;
                 const net = row.sales - row.modal - row.salary - row.otherCost;
                 return (
@@ -3549,7 +3666,7 @@ function toDailySalesReportRow(report: TransactionReportRow): DailySalesReportRo
 }
 
 function StockOpnameReport({ rows: backendRows }: { rows?: StockOpnameReportRow[] }) {
-  const sourceRows = backendRows?.length ? backendRows : stockOpnameReports;
+  const sourceRows = backendRows === undefined ? stockOpnameReports : backendRows;
   const [selectedMonth, setSelectedMonth] = useState("Juni 2026");
   const reportMonths = getAvailableMonths(sourceRows);
   const rows = filterByMonth(sourceRows, selectedMonth);
@@ -3607,6 +3724,16 @@ function StockOpnameReport({ rows: backendRows }: { rows?: StockOpnameReportRow[
             </TableRow>
           </TableHeader>
           <TableBody>
+            {rows.length === 0 ? (
+              <TableRow>
+                <TableCell
+                  className="py-8 text-center text-sm font-medium text-muted-foreground"
+                  colSpan={8}
+                >
+                  Belum ada data opname stok di Turso untuk periode ini.
+                </TableCell>
+              </TableRow>
+            ) : null}
             {rows.map((row) => (
               <TableRow key={`${row.number}-${row.material}`}>
                 <TableCell>{row.date}</TableCell>
@@ -3648,7 +3775,7 @@ function SimpleReport({
   icon: React.ElementType;
   rows?: TransactionReportRow[];
 }) {
-  const sourceRows = backendRows?.length ? backendRows : transactionReports[type];
+  const sourceRows = backendRows === undefined ? transactionReports[type] : backendRows;
   const [selectedMonth, setSelectedMonth] = useState("Juni 2026");
   const reportMonths = getAvailableMonths(sourceRows);
   const rows = filterByMonth(sourceRows, selectedMonth);
@@ -3707,6 +3834,16 @@ function SimpleReport({
               </TableRow>
             </TableHeader>
             <TableBody>
+              {rows.length === 0 ? (
+                <TableRow>
+                  <TableCell
+                    className="py-8 text-center text-sm font-medium text-muted-foreground"
+                    colSpan={6}
+                  >
+                    Belum ada data {type.toLowerCase()} di Turso untuk periode ini.
+                  </TableCell>
+                </TableRow>
+              ) : null}
               {rows.map((row) => (
                 <TableRow
                   key={row.number}

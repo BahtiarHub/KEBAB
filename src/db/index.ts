@@ -21,6 +21,10 @@ const databaseUrl =
 const authToken =
   process.env.TURSO_AUTH_TOKEN ?? process.env.DATABASE_AUTH_TOKEN;
 
+export const databaseSource = databaseUrl.startsWith("libsql://")
+  ? "Turso Cloud"
+  : "SQLite Lokal";
+
 export const libsql = createClient({
   authToken,
   url: databaseUrl
