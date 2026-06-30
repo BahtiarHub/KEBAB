@@ -17,7 +17,7 @@ export async function POST(request: Request) {
 
   const body = (await request.json()) as {
     cashOwner?: number;
-    costs?: { grabGofood: number; otherCost: number; salary: number };
+    costs?: { grabGofood: number; otherCost: number; qris?: number; salary: number };
     items?: SaleItem[];
     kiosk?: string;
     kioskKey?: string;
@@ -86,6 +86,13 @@ export async function POST(request: Request) {
       costDetails.push([
         "Grab/GoFood",
         costs.grabGofood,
+        "Pengurang cash owner"
+      ]);
+    }
+    if ((costs.qris ?? 0) > 0) {
+      costDetails.push([
+        "QRIS",
+        costs.qris ?? 0,
         "Pengurang cash owner"
       ]);
     }

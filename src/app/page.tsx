@@ -451,6 +451,7 @@ type DailySalesReportRow = {
   modal: number;
   salary: number;
   grabGofood: number;
+  qris: number;
   otherCost: number;
 };
 
@@ -463,6 +464,7 @@ const dailySalesReports: DailySalesReportRow[] = [
     modal: 236000,
     salary: 180000,
     grabGofood: 95000,
+    qris: 0,
     otherCost: 30000
   },
   {
@@ -473,6 +475,7 @@ const dailySalesReports: DailySalesReportRow[] = [
     modal: 152000,
     salary: 150000,
     grabGofood: 72000,
+    qris: 0,
     otherCost: 18000
   },
   {
@@ -483,6 +486,7 @@ const dailySalesReports: DailySalesReportRow[] = [
     modal: 119000,
     salary: 120000,
     grabGofood: 42000,
+    qris: 0,
     otherCost: 15000
   },
   {
@@ -493,6 +497,7 @@ const dailySalesReports: DailySalesReportRow[] = [
     modal: 218000,
     salary: 180000,
     grabGofood: 88000,
+    qris: 0,
     otherCost: 26000
   },
   {
@@ -503,6 +508,7 @@ const dailySalesReports: DailySalesReportRow[] = [
     modal: 133000,
     salary: 150000,
     grabGofood: 60000,
+    qris: 0,
     otherCost: 12000
   },
   {
@@ -513,6 +519,7 @@ const dailySalesReports: DailySalesReportRow[] = [
     modal: 107000,
     salary: 120000,
     grabGofood: 39000,
+    qris: 0,
     otherCost: 11000
   }
 ];
@@ -1428,6 +1435,11 @@ function DashboardView({
       (sum, report) => sum + sumDetailsByItem(report, "Grab/GoFood"),
       0
     ) ?? monthlyFinance.grabGofood;
+  const dashboardQris =
+    salesReports?.reduce(
+      (sum, report) => sum + sumDetailsByItem(report, "QRIS"),
+      0
+    ) ?? 0;
   const dashboardOtherCost =
     (salesReports?.reduce(
       (sum, report) => sum + sumDetailsByItem(report, "Lain lain"),
@@ -1568,7 +1580,7 @@ function DashboardView({
         </Card>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <FinancialMetricCard
           icon={ReceiptText}
           label="Gaji"
@@ -1581,6 +1593,12 @@ function DashboardView({
           label="Grab/GoFood"
           note="Pengurang cash yang diterima owner"
           value={formatCurrency(dashboardGrabGofood)}
+        />
+        <FinancialMetricCard
+          icon={ReceiptText}
+          label="QRIS"
+          note="Pengurang cash yang diterima owner"
+          value={formatCurrency(dashboardQris)}
         />
         <FinancialMetricCard
           icon={Calculator}
@@ -1797,11 +1815,11 @@ function SalesView({
     wadas: {}
   });
   const [salesCostsByKiosk, setSalesCostsByKiosk] = useState<
-    Record<KioskKey, { grabGofood: number; otherCost: number; salary: number }>
+    Record<KioskKey, { grabGofood: number; otherCost: number; qris: number; salary: number }>
   >({
-    bubulak: { grabGofood: 0, otherCost: 0, salary: 0 },
-    ciherang: { grabGofood: 0, otherCost: 0, salary: 0 },
-    wadas: { grabGofood: 0, otherCost: 0, salary: 0 }
+    bubulak: { grabGofood: 0, otherCost: 0, qris: 0, salary: 0 },
+    ciherang: { grabGofood: 0, otherCost: 0, qris: 0, salary: 0 },
+    wadas: { grabGofood: 0, otherCost: 0, qris: 0, salary: 0 }
   });
 
   const saleQty = saleQtyByKiosk[selectedKiosk];
@@ -1824,7 +1842,11 @@ function SalesView({
   );
   const profitDeductions = totalSalesModal + salesCosts.salary + salesCosts.otherCost;
   const ownerCashReceived =
-    totalSales - salesCosts.grabGofood - salesCosts.salary - salesCosts.otherCost;
+    totalSales -
+    salesCosts.grabGofood -
+    salesCosts.qris -
+    salesCosts.salary -
+    salesCosts.otherCost;
   const [saveStatus, setSaveStatus] = useState("");
 
   function setKioskSaleQty(code: string, value: number) {
@@ -1943,7 +1965,7 @@ function SalesView({
             </TableBody>
           </Table>
 
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-4">
             <Field label="Gaji Karyawan">
               <NumberInput
                 value={salesCosts.salary}
@@ -1954,6 +1976,12 @@ function SalesView({
               <NumberInput
                 value={salesCosts.grabGofood}
                 onValueChange={(value) => setKioskCost("grabGofood", value)}
+              />
+            </Field>
+            <Field label="QRIS">
+              <NumberInput
+                value={salesCosts.qris}
+                onValueChange={(value) => setKioskCost("qris", value)}
               />
             </Field>
             <Field label="Lain lain">
@@ -3051,6 +3079,8 @@ function FinanceView({
     grabGofood:
       salesReports.reduce((sum, report) => sum + sumDetailsByItem(report, "Grab/GoFood"), 0) ||
       (useFallbackFinance ? monthlyFinance.grabGofood : 0),
+    qris:
+      salesReports.reduce((sum, report) => sum + sumDetailsByItem(report, "QRIS"), 0),
     modal:
       salesReports.reduce((sum, report) => sum + sumDetailsByItem(report, "Modal Penjualan"), 0) ||
       (useFallbackFinance ? monthlyFinance.modal : 0),
@@ -3068,6 +3098,7 @@ function FinanceView({
     ["Laba Kotor", gross, "Omset dikurangi modal"],
     ["Gaji", finance.gaji, "Pengurang laba"],
     ["Grab/GoFood", finance.grabGofood, "Pengurang cash diterima owner"],
+    ["QRIS", finance.qris, "Pengurang cash diterima owner"],
     ["Biaya Lain Lain Transaksi", finance.otherCost, "Pengurang laba dari transaksi"],
     ["Parameter Biaya Bulanan", totalMonthlyCost, "Pengurang laba bulanan"],
     ["Pendapatan Tambahan", totalAdditionalIncome, "Penambah laba bersih"]
@@ -3080,7 +3111,11 @@ function FinanceView({
     totalMonthlyCost +
     totalAdditionalIncome;
   const ownerCash =
-    finance.omset - finance.grabGofood - finance.gaji - finance.otherCost;
+    finance.omset -
+    finance.grabGofood -
+    finance.qris -
+    finance.gaji -
+    finance.otherCost;
 
   const totalDeductions =
     finance.modal + finance.gaji + finance.otherCost + totalMonthlyCost;
@@ -3192,7 +3227,7 @@ function FinanceView({
                 <TableCell className="font-black text-amber-800">
                   {formatCurrency(ownerCash)}
                 </TableCell>
-                <TableCell>Omset dikurangi Grab/GoFood, gaji, dan lain lain</TableCell>
+                <TableCell>Omset dikurangi Grab/GoFood, QRIS, gaji, dan lain lain</TableCell>
               </TableRow>
               <TableRow className="bg-emerald-50">
                 <TableCell className="font-bold">Laba Bersih Bulan Ini</TableCell>
@@ -3502,7 +3537,13 @@ function SalesReport({ reports }: { reports?: TransactionReportRow[] }) {
         );
   const summary = rows.reduce(
     (total, row) => ({
-      cash: total.cash + row.sales - row.grabGofood - row.salary - row.otherCost,
+      cash:
+        total.cash +
+        row.sales -
+        row.grabGofood -
+        row.qris -
+        row.salary -
+        row.otherCost,
       gross: total.gross + row.sales - row.modal,
       modal: total.modal + row.modal,
       net: total.net + row.sales - row.modal - row.salary - row.otherCost,
@@ -3571,6 +3612,7 @@ function SalesReport({ reports }: { reports?: TransactionReportRow[] }) {
                 <TableHead>Laba Kotor</TableHead>
                 <TableHead>Gaji</TableHead>
                 <TableHead>Grab/GoFood</TableHead>
+                <TableHead>QRIS</TableHead>
                 <TableHead>Lain lain</TableHead>
                 <TableHead>Cash Owner</TableHead>
                 <TableHead>Laba Bersih</TableHead>
@@ -3581,14 +3623,15 @@ function SalesReport({ reports }: { reports?: TransactionReportRow[] }) {
                 <TableRow>
                   <TableCell
                     className="py-8 text-center text-sm font-medium text-muted-foreground"
-                    colSpan={activeTab === "Total Penjualan" ? 11 : 10}
+                    colSpan={activeTab === "Total Penjualan" ? 12 : 11}
                   >
                     Belum ada data penjualan di Turso untuk periode ini.
                   </TableCell>
                 </TableRow>
               ) : null}
               {rows.map((row) => {
-                const cash = row.sales - row.grabGofood - row.salary - row.otherCost;
+                const cash =
+                  row.sales - row.grabGofood - row.qris - row.salary - row.otherCost;
                 const gross = row.sales - row.modal;
                 const net = row.sales - row.modal - row.salary - row.otherCost;
                 return (
@@ -3605,6 +3648,7 @@ function SalesReport({ reports }: { reports?: TransactionReportRow[] }) {
                     </TableCell>
                     <TableCell>{formatCurrency(row.salary)}</TableCell>
                     <TableCell>{formatCurrency(row.grabGofood)}</TableCell>
+                    <TableCell>{formatCurrency(row.qris)}</TableCell>
                     <TableCell>{formatCurrency(row.otherCost)}</TableCell>
                     <TableCell className="font-semibold text-amber-800">
                       {formatCurrency(cash)}
@@ -3632,6 +3676,7 @@ function aggregateDailySales(rows: DailySalesReportRow[]): DailySalesReportRow[]
       modal: 0,
       orderCount: 0,
       otherCost: 0,
+      qris: 0,
       salary: 0,
       sales: 0
     };
@@ -3642,6 +3687,7 @@ function aggregateDailySales(rows: DailySalesReportRow[]): DailySalesReportRow[]
       modal: current.modal + row.modal,
       orderCount: current.orderCount + row.orderCount,
       otherCost: current.otherCost + row.otherCost,
+      qris: current.qris + row.qris,
       salary: current.salary + row.salary,
       sales: current.sales + row.sales
     };
@@ -3662,6 +3708,7 @@ function toDailySalesReportRow(report: TransactionReportRow): DailySalesReportRo
   const modal = sumDetailsByItem(report, "Modal Penjualan");
   const salary = sumDetailsByItem(report, "Gaji Karyawan");
   const grabGofood = sumDetailsByItem(report, "Grab/GoFood");
+  const qris = sumDetailsByItem(report, "QRIS");
   const otherCost = sumDetailsByItem(report, "Lain lain");
   return {
     date: report.date,
@@ -3670,6 +3717,7 @@ function toDailySalesReportRow(report: TransactionReportRow): DailySalesReportRo
     modal,
     orderCount: 1,
     otherCost,
+    qris,
     salary,
     sales: report.total
   };
