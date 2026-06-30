@@ -880,29 +880,34 @@ export default function Home() {
       throw new Error("Username wajib diisi.");
     }
 
-    const usersResponse = await fetch("/api/users", { cache: "no-store" });
+    const fallbackEmail = normalizedUsername.includes("@")
+      ? normalizedUsername
+      : `${normalizedUsername.replace(/[^a-z0-9]+/g, ".").replace(/^\.+|\.+$/g, "")}@yudhistira.local`;
+    let loginEmail = fallbackEmail;
 
-    if (!usersResponse.ok) {
-      throw new Error("Gagal mengambil data user.");
-    }
+    try {
+      const usersResponse = await fetch("/api/users", { cache: "no-store" });
 
-    const usersPayload = (await usersResponse.json()) as {
-      users?: Array<{ email: string; name: string; role: UserRole }>;
-    };
-    const targetUser = usersPayload.users?.find(
-      (user) =>
-        user.role === role &&
-        (user.name.trim().toLowerCase() === normalizedUsername ||
-          user.email.trim().toLowerCase() === normalizedUsername)
-    );
+      if (usersResponse.ok) {
+        const usersPayload = (await usersResponse.json()) as {
+          users?: Array<{ email: string; name: string; role: UserRole }>;
+        };
+        const targetUser = usersPayload.users?.find(
+          (user) =>
+            user.role === role &&
+            (user.name.trim().toLowerCase() === normalizedUsername ||
+              user.email.trim().toLowerCase() === normalizedUsername)
+        );
 
-    if (!targetUser) {
-      throw new Error("Username atau role tidak ditemukan.");
+        loginEmail = targetUser?.email ?? fallbackEmail;
+      }
+    } catch {
+      loginEmail = fallbackEmail;
     }
 
     const response = await fetch("/api/auth/sign-in/email", {
       body: JSON.stringify({
-        email: targetUser.email,
+        email: loginEmail,
         password,
         rememberMe: true
       }),
@@ -917,6 +922,11 @@ export default function Home() {
     }
 
     const result = (await response.json()) as { user?: { role?: UserRole } };
+    if (result.user?.role && result.user.role !== role) {
+      await fetch("/api/auth/sign-out", { method: "POST" }).catch(() => undefined);
+      throw new Error("Role user tidak sesuai.");
+    }
+
     setRole(result.user?.role ?? role);
     setIsAuthenticated(true);
     setOpenGroups({ report: false, sales: false });
