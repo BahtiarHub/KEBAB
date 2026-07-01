@@ -26,7 +26,7 @@ import {
   Store,
   Truck
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -707,6 +707,29 @@ const shortMonthMap: Record<string, string> = {
   Sep: "September"
 };
 
+const monthOrder = monthOptions.map((month) => month.split(" ")[0]);
+
+function compareMonthLabels(first: string, second: string) {
+  const [firstMonth, firstYear] = first.split(" ");
+  const [secondMonth, secondYear] = second.split(" ");
+  const yearDiff = Number(firstYear) - Number(secondYear);
+
+  if (yearDiff !== 0) {
+    return yearDiff;
+  }
+
+  return monthOrder.indexOf(firstMonth) - monthOrder.indexOf(secondMonth);
+}
+
+function getCurrentMonthLabel() {
+  const [month, year] = new Intl.DateTimeFormat("id-ID", {
+    month: "long",
+    year: "numeric"
+  }).format(new Date()).split(" ");
+
+  return `${month} ${year}`;
+}
+
 function getMonthLabelFromDate(date: string) {
   const parts = date.split(" ").filter(Boolean);
   const shortMonth = parts.find((part) => shortMonthMap[part]);
@@ -728,7 +751,12 @@ function getAvailableMonths(rows: Array<{ date: string }>) {
     new Set(rows.map((row) => getMonthLabelFromDate(row.date)))
   );
 
-  return monthOptions.filter((month) => months.includes(month));
+  return months.sort(compareMonthLabels);
+}
+
+function getDefaultReportMonth(rows: Array<{ date: string }>) {
+  const availableMonths = getAvailableMonths(rows);
+  return availableMonths[availableMonths.length - 1] ?? getCurrentMonthLabel();
 }
 
 function stockStatus(stock: number, minimum: number | null) {
@@ -3053,11 +3081,20 @@ function FinanceView({
   totalAdditionalIncome: number;
   totalMonthlyCost: number;
 }) {
-  const reportRows = reports ?? [];
-  const financeMonths = getAvailableMonths(reportRows).length
-    ? getAvailableMonths(reportRows)
-    : monthOptions;
-  const [selectedMonth, setSelectedMonth] = useState("Juni 2026");
+  const reportRows = useMemo(() => reports ?? [], [reports]);
+  const financeMonths = useMemo(() => {
+    const availableMonths = getAvailableMonths(reportRows);
+    return availableMonths.length ? availableMonths : monthOptions;
+  }, [reportRows]);
+  const [selectedMonth, setSelectedMonth] = useState(() =>
+    getDefaultReportMonth(reportRows)
+  );
+  useEffect(() => {
+    const nextMonth = getDefaultReportMonth(reportRows);
+    setSelectedMonth((current) =>
+      financeMonths.includes(current) ? current : nextMonth
+    );
+  }, [financeMonths, reportRows]);
   const monthReports = filterByMonth(reportRows, selectedMonth);
   const useFallbackFinance = reports === undefined;
   const salesReports = monthReports.filter((report) => report.type === "Penjualan");
@@ -3515,11 +3552,20 @@ function ReportView({
 
 function SalesReport({ reports }: { reports?: TransactionReportRow[] }) {
   const [activeTab, setActiveTab] = useState<"Kios Bubulak" | "Kios Ciherang" | "Kios Wadas" | "Total Penjualan">("Kios Wadas");
-  const [selectedMonth, setSelectedMonth] = useState("Juni 2026");
   const tabs = ["Kios Wadas", "Kios Ciherang", "Kios Bubulak", "Total Penjualan"] as const;
-  const sourceRows =
-    reports === undefined ? dailySalesReports : reports.map(toDailySalesReportRow);
-  const reportMonths = getAvailableMonths(sourceRows);
+  const sourceRows = useMemo(
+    () => (reports === undefined ? dailySalesReports : reports.map(toDailySalesReportRow)),
+    [reports]
+  );
+  const [selectedMonth, setSelectedMonth] = useState(() =>
+    getDefaultReportMonth(sourceRows)
+  );
+  const reportMonths = useMemo(() => getAvailableMonths(sourceRows), [sourceRows]);
+  useEffect(() => {
+    const options = reportMonths.length ? reportMonths : monthOptions;
+    const nextMonth = getDefaultReportMonth(sourceRows);
+    setSelectedMonth((current) => (options.includes(current) ? current : nextMonth));
+  }, [reportMonths, sourceRows]);
   const monthRows = filterByMonth(sourceRows, selectedMonth);
   const rows =
     activeTab === "Total Penjualan"
@@ -3716,9 +3762,19 @@ function toDailySalesReportRow(report: TransactionReportRow): DailySalesReportRo
 }
 
 function StockOpnameReport({ rows: backendRows }: { rows?: StockOpnameReportRow[] }) {
-  const sourceRows = backendRows === undefined ? stockOpnameReports : backendRows;
-  const [selectedMonth, setSelectedMonth] = useState("Juni 2026");
-  const reportMonths = getAvailableMonths(sourceRows);
+  const sourceRows = useMemo(
+    () => (backendRows === undefined ? stockOpnameReports : backendRows),
+    [backendRows]
+  );
+  const [selectedMonth, setSelectedMonth] = useState(() =>
+    getDefaultReportMonth(sourceRows)
+  );
+  const reportMonths = useMemo(() => getAvailableMonths(sourceRows), [sourceRows]);
+  useEffect(() => {
+    const options = reportMonths.length ? reportMonths : monthOptions;
+    const nextMonth = getDefaultReportMonth(sourceRows);
+    setSelectedMonth((current) => (options.includes(current) ? current : nextMonth));
+  }, [reportMonths, sourceRows]);
   const rows = filterByMonth(sourceRows, selectedMonth);
   const totalDifference = rows.reduce(
     (total, row) => total + row.difference,
@@ -3825,11 +3881,26 @@ function SimpleReport({
   icon: React.ElementType;
   rows?: TransactionReportRow[];
 }) {
-  const sourceRows = backendRows === undefined ? transactionReports[type] : backendRows;
-  const [selectedMonth, setSelectedMonth] = useState("Juni 2026");
-  const reportMonths = getAvailableMonths(sourceRows);
+  const sourceRows = useMemo(
+    () => (backendRows === undefined ? transactionReports[type] : backendRows),
+    [backendRows, type]
+  );
+  const [selectedMonth, setSelectedMonth] = useState(() =>
+    getDefaultReportMonth(sourceRows)
+  );
+  const reportMonths = useMemo(() => getAvailableMonths(sourceRows), [sourceRows]);
   const rows = filterByMonth(sourceRows, selectedMonth);
   const [selectedNumber, setSelectedNumber] = useState(rows[0]?.number ?? "");
+  useEffect(() => {
+    const options = reportMonths.length ? reportMonths : monthOptions;
+    const nextMonth = getDefaultReportMonth(sourceRows);
+    setSelectedMonth((current) => (options.includes(current) ? current : nextMonth));
+  }, [reportMonths, sourceRows]);
+  useEffect(() => {
+    setSelectedNumber((current) =>
+      rows.some((row) => row.number === current) ? current : rows[0]?.number ?? ""
+    );
+  }, [rows]);
   const selectedTransaction = rows.find((row) => row.number === selectedNumber) ?? rows[0];
   const total = rows.reduce((sum, row) => sum + row.total, 0);
   const gross = getGrossProfit();
