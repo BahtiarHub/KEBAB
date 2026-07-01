@@ -9,6 +9,8 @@ import {
   ChevronDown,
   DollarSign,
   Download,
+  Eye,
+  EyeOff,
   FileSpreadsheet,
   LayoutDashboard,
   LogOut,
@@ -2469,14 +2471,9 @@ function LoginUserView({
   const [selectedRole, setSelectedRole] = useState<UserRole>(currentRole);
   const [loginError, setLoginError] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
-  const [username, setUsername] = useState<string>(currentRole);
-  const [password, setPassword] = useState("admin123");
-
-  function selectRole(role: UserRole) {
-    setSelectedRole(role);
-    setUsername(role);
-    setPassword(role === "Admin" ? "admin123" : "operator123");
-  }
+  const [showPassword, setShowPassword] = useState(false);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
 
   async function submitLogin() {
     setLoginError("");
@@ -2507,42 +2504,37 @@ function LoginUserView({
         </div>
       </CardHeader>
       <CardContent className="space-y-5">
-        <div className="grid grid-cols-2 gap-2 rounded-lg border border-amber-200 bg-amber-100 p-1">
-          {(["Admin", "Operator"] as UserRole[]).map((role) => (
-            <button
-              key={role}
-              onClick={() => selectRole(role)}
-              className={`rounded-md px-3 py-2.5 text-sm font-bold transition-colors ${
-                selectedRole === role
-                  ? "bg-amber-950 text-amber-50 shadow-sm"
-                  : "text-amber-950 hover:bg-white/70"
-              }`}
-            >
-              {role}
-            </button>
-          ))}
-        </div>
         <Field label="Username">
           <Input
             className="font-medium"
-            placeholder="Contoh: Admin atau Operator"
+            placeholder="Masukkan username"
             value={username}
             onChange={(event) => setUsername(event.target.value)}
           />
         </Field>
         <Field label="Password">
-          <Input
-            className="font-medium"
-            type="password"
-            placeholder="Masukkan password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-          />
+          <div className="relative">
+            <Input
+              className="pr-10 font-medium"
+              type={showPassword ? "text" : "password"}
+              placeholder="Masukkan password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+            />
+            <button
+              type="button"
+              aria-label={showPassword ? "Sembunyikan password" : "Lihat password"}
+              className="absolute right-2 top-1/2 inline-flex size-8 -translate-y-1/2 items-center justify-center rounded-md text-amber-900 transition-colors hover:bg-amber-100"
+              onClick={() => setShowPassword((current) => !current)}
+            >
+              {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+            </button>
+          </div>
         </Field>
         <Field label="Role User">
           <Select
             value={selectedRole}
-            onChange={(event) => selectRole(event.target.value as UserRole)}
+            onChange={(event) => setSelectedRole(event.target.value as UserRole)}
           >
             <option value="Admin">Admin</option>
             <option value="Operator">Operator</option>
