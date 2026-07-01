@@ -117,7 +117,14 @@ export const transactions = sqliteTable("transactions", {
   number: text("number").primaryKey(),
   date: text("date").notNull(),
   type: text("type")
-    .$type<"Penjualan" | "Belanja" | "Distribusi" | "Biaya Lain Lain">()
+    .$type<
+      | "Penjualan"
+      | "Belanja"
+      | "Distribusi"
+      | "Biaya Lain Lain"
+      | "Kupat Tahu Belanja"
+      | "Kupat Tahu Penjualan"
+    >()
     .notNull(),
   location: text("location").notNull(),
   note: text("note").notNull(),

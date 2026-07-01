@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 
 import { db, ensureDatabase } from "@/db";
 import * as schema from "@/db/schema";
+import { formatDateForReport } from "@/lib/date";
 
 type DistributionItem = {
   code: string;
@@ -36,6 +37,7 @@ export async function POST(request: Request) {
   await ensureDatabase();
 
   const body = (await request.json()) as {
+    date?: string;
     destination?: string;
     destinationName?: string;
     items?: DistributionItem[];
@@ -51,11 +53,7 @@ export async function POST(request: Request) {
 
   await db.insert(schema.transactions)
     .values({
-      date: new Intl.DateTimeFormat("id-ID", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric"
-      }).format(new Date()),
+      date: formatDateForReport(body.date),
       location: body.destinationName,
       note: `Distribusi Gudang Utama ke ${body.destinationName}`,
       number,

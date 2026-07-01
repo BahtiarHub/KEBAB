@@ -8,6 +8,10 @@ const transactionTypeByExport: Record<string, string> = {
   "biaya lain lain": "Biaya Lain Lain",
   "biaya-lain-lain": "Biaya Lain Lain",
   distribusi: "Distribusi",
+  "kupat tahu belanja": "Kupat Tahu Belanja",
+  "kupat-tahu-belanja": "Kupat Tahu Belanja",
+  "kupat tahu penjualan": "Kupat Tahu Penjualan",
+  "kupat-tahu-penjualan": "Kupat Tahu Penjualan",
   penjualan: "Penjualan"
 };
 

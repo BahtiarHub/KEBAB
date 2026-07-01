@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 
 import { db, ensureDatabase } from "@/db";
 import * as schema from "@/db/schema";
+import { formatDateForReport } from "@/lib/date";
 
 type OpnameItem = {
   materialCode: string;
@@ -15,6 +16,7 @@ export async function POST(request: Request) {
   await ensureDatabase();
 
   const body = (await request.json()) as {
+    date?: string;
     items?: OpnameItem[];
     locationKey?: string;
     locationName?: string;
@@ -26,11 +28,7 @@ export async function POST(request: Request) {
   }
 
   const number = `OPN-${Date.now()}`;
-  const date = new Intl.DateTimeFormat("id-ID", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric"
-  }).format(new Date());
+  const date = formatDateForReport(body.date);
 
   for (const item of body.items) {
     await db.update(schema.stockBalances)

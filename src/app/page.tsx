@@ -24,7 +24,8 @@ import {
   ShieldCheck,
   ShoppingCart,
   Store,
-  Truck
+  Truck,
+  Utensils
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -55,6 +56,10 @@ type View =
   | "Belanja"
   | "Distribusi"
   | "Biaya Lain lain"
+  | "Kupat Tahu Belanja"
+  | "Kupat Tahu Penjualan"
+  | "Kupat Tahu Report Belanja"
+  | "Kupat Tahu Report Penjualan"
   | "Report"
   | "Neraca Keuangan"
   | "Opname Stok"
@@ -72,8 +77,11 @@ type LocationKey = "gudang" | "wadas" | "ciherang" | "bubulak";
 type KioskKey = Exclude<LocationKey, "gudang">;
 type NumberMap = Record<string, number>;
 type UserRole = "Admin" | "Operator";
-type DetailReportType = Exclude<ReportType, "Penjualan" | "Opname Stok">;
 type TransactionType = Exclude<ReportType, "Opname Stok">;
+type AppTransactionType =
+  | TransactionType
+  | "Kupat Tahu Belanja"
+  | "Kupat Tahu Penjualan";
 
 type BackendBootstrap = {
   databaseSource: string;
@@ -115,7 +123,7 @@ type TransactionReportRow = {
   note: string;
   number: string;
   total: number;
-  type: TransactionType;
+  type: AppTransactionType;
 };
 
 type StockOpnameReportRow = {
@@ -526,8 +534,8 @@ const dailySalesReports: DailySalesReportRow[] = [
   }
 ];
 
-const transactionReports: Record<
-  DetailReportType,
+const transactionReports: Partial<Record<
+  AppTransactionType,
   Array<{
     date: string;
     number: string;
@@ -536,7 +544,7 @@ const transactionReports: Record<
     total: number;
     details: Array<{ item: string; qty: number; price: number; activity: string }>;
   }>
-> = {
+>> = {
   Belanja: [
     {
       date: "28 Jun",
@@ -675,6 +683,10 @@ function formatNumber(value: number) {
   return new Intl.NumberFormat("id-ID", {
     maximumFractionDigits: 0
   }).format(value);
+}
+
+function getTodayInputDate() {
+  return new Date().toLocaleDateString("en-CA");
 }
 
 const monthOptions = [
@@ -853,6 +865,7 @@ export default function Home() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [openGroups, setOpenGroups] = useState({
+    kupatTahu: false,
     report: false,
     sales: false
   });
@@ -966,7 +979,7 @@ export default function Home() {
 
     setRole(result.user?.role ?? role);
     setIsAuthenticated(true);
-    setOpenGroups({ report: false, sales: false });
+    setOpenGroups({ kupatTahu: false, report: false, sales: false });
     setActiveView("Dashboard");
     await loadBootstrap();
   }
@@ -976,13 +989,21 @@ export default function Home() {
     setIsAuthenticated(false);
     setBackendData(null);
     setSidebarOpen(false);
-    setOpenGroups({ report: false, sales: false });
+    setOpenGroups({ kupatTahu: false, report: false, sales: false });
     setActiveView("Dashboard");
   }
 
   const title =
     activeView === "Penjualan"
       ? `Penjualan ${locations.find((item) => item.key === selectedKiosk)?.name}`
+      : activeView === "Kupat Tahu Belanja"
+        ? "Belanja Kupat Tahu"
+        : activeView === "Kupat Tahu Penjualan"
+          ? "Penjualan Kupat Tahu"
+          : activeView === "Kupat Tahu Report Belanja"
+            ? "Report Belanja Kupat Tahu"
+            : activeView === "Kupat Tahu Report Penjualan"
+              ? "Report Penjualan Kupat Tahu"
       : activeView === "Report"
         ? `Report ${reportType}`
         : activeView;
@@ -1152,6 +1173,33 @@ export default function Home() {
                 ))}
               </NavGroup>
 
+              <NavGroup
+                collapsed={sidebarCollapsed}
+                icon={Utensils}
+                isOpen={openGroups.kupatTahu}
+                label="Kupat Tahu"
+                onToggle={() =>
+                  setOpenGroups((current) => ({
+                    ...current,
+                    kupatTahu: !current.kupatTahu
+                  }))
+                }
+              >
+                {[
+                  ["Kupat Tahu Belanja", "Belanja"],
+                  ["Kupat Tahu Penjualan", "Penjualan"],
+                  ["Kupat Tahu Report Belanja", "Report Belanja"],
+                  ["Kupat Tahu Report Penjualan", "Report Penjualan"]
+                ].map(([view, label]) => (
+                  <SubNavButton
+                    key={view}
+                    active={activeView === view}
+                    label={label}
+                    onClick={() => setActiveView(view as View)}
+                  />
+                ))}
+              </NavGroup>
+
               <NavButton
                 active={activeView === "Belanja"}
                 collapsed={sidebarCollapsed}
@@ -1310,6 +1358,32 @@ export default function Home() {
             {activeView === "Biaya Lain lain" ? (
               <ExpenseView onSaved={loadBootstrap} />
             ) : null}
+            {activeView === "Kupat Tahu Belanja" ? (
+              <KupatTahuPurchaseView onSaved={loadBootstrap} />
+            ) : null}
+            {activeView === "Kupat Tahu Penjualan" ? (
+              <KupatTahuSalesView onSaved={loadBootstrap} />
+            ) : null}
+            {activeView === "Kupat Tahu Report Belanja" ? (
+              <SimpleReport
+                icon={ShoppingCart}
+                rows={backendData?.reports?.filter(
+                  (report) => report.type === "Kupat Tahu Belanja"
+                )}
+                title="Report Belanja Kupat Tahu"
+                type="Kupat Tahu Belanja"
+              />
+            ) : null}
+            {activeView === "Kupat Tahu Report Penjualan" ? (
+              <SimpleReport
+                icon={Utensils}
+                rows={backendData?.reports?.filter(
+                  (report) => report.type === "Kupat Tahu Penjualan"
+                )}
+                title="Report Penjualan Kupat Tahu"
+                type="Kupat Tahu Penjualan"
+              />
+            ) : null}
             {activeView === "Opname Stok" ? (
               <StockOpnameView materials={appMaterials} onSaved={loadBootstrap} />
             ) : null}
@@ -1417,26 +1491,38 @@ function DashboardView({
 }) {
   const [selectedChartKiosk, setSelectedChartKiosk] = useState("Kios Wadas");
   const salesReports = reports?.filter((report) => report.type === "Penjualan");
+  const kupatTahuSalesReports = reports?.filter(
+    (report) => report.type === "Kupat Tahu Penjualan"
+  );
   const expenseReports =
     reports?.filter((report) => report.type === "Biaya Lain Lain") ?? [];
   const dashboardDailyRows =
     salesReports === undefined
       ? dailyPerformance
-      : salesReports.map((report) => {
-          const modal = sumDetailsByItem(report, "Modal Penjualan");
-          const salary = sumDetailsByItem(report, "Gaji Karyawan");
-          const otherCost = sumDetailsByItem(report, "Lain lain");
+      : [
+          ...salesReports.map((report) => {
+            const modal = sumDetailsByItem(report, "Modal Penjualan");
+            const salary = sumDetailsByItem(report, "Gaji Karyawan");
+            const otherCost = sumDetailsByItem(report, "Lain lain");
 
-          return {
+            return {
+              date: report.date,
+              kiosk: report.location,
+              laba: report.total - modal - salary - otherCost,
+              omset: report.total
+            };
+          }),
+          ...(kupatTahuSalesReports ?? []).map((report) => ({
             date: report.date,
-            kiosk: report.location,
-            laba: report.total - modal - salary - otherCost,
+            kiosk: "Kupat Tahu",
+            laba: sumDetailsByItem(report, "Pendapatan Bersih Kupat Tahu"),
             omset: report.total
-          };
-        });
+          }))
+        ];
   const dailyLabels = Array.from(
     new Set(dashboardDailyRows.map((item) => item.date))
   );
+  const chartLocations = Array.from(new Set(dashboardDailyRows.map((item) => item.kiosk)));
   const selectedDailyRows = dashboardDailyRows.filter(
     (item) => item.kiosk === selectedChartKiosk
   );
@@ -1451,30 +1537,51 @@ function DashboardView({
   });
   const dashboardOmset = dashboardDailyRows.reduce((sum, row) => sum + row.omset, 0);
   const dashboardModal =
-    salesReports?.reduce(
-      (sum, report) => sum + sumDetailsByItem(report, "Modal Penjualan"),
-      0
-    ) ?? monthlyFinance.modal;
+    salesReports === undefined
+      ? monthlyFinance.modal
+      : salesReports.reduce(
+          (sum, report) => sum + sumDetailsByItem(report, "Modal Penjualan"),
+          0
+        ) +
+        (kupatTahuSalesReports ?? []).reduce(
+          (sum, report) => sum + sumDetailsByItem(report, "Modal Kupat Tahu"),
+          0
+        );
   const dashboardGaji =
-    salesReports?.reduce(
-      (sum, report) => sum + sumDetailsByItem(report, "Gaji Karyawan"),
-      0
-    ) ?? monthlyFinance.gaji;
+    salesReports === undefined
+      ? monthlyFinance.gaji
+      : salesReports.reduce(
+          (sum, report) => sum + sumDetailsByItem(report, "Gaji Karyawan"),
+          0
+        ) +
+        (kupatTahuSalesReports ?? []).reduce(
+          (sum, report) => sum + sumDetailsByItem(report, "Gaji Kupat Tahu"),
+          0
+        );
   const dashboardGrabGofood =
     salesReports?.reduce(
       (sum, report) => sum + sumDetailsByItem(report, "Grab/GoFood"),
       0
     ) ?? monthlyFinance.grabGofood;
   const dashboardQris =
-    salesReports?.reduce(
+    (salesReports?.reduce(
       (sum, report) => sum + sumDetailsByItem(report, "QRIS"),
       0
-    ) ?? 0;
+    ) ?? 0) +
+    (kupatTahuSalesReports ?? []).reduce(
+      (sum, report) => sum + sumDetailsByItem(report, "QRIS Kupat Tahu"),
+      0
+    );
   const dashboardOtherCost =
     (salesReports?.reduce(
       (sum, report) => sum + sumDetailsByItem(report, "Lain lain"),
       0
-    ) ?? 0) + expenseReports.reduce((sum, report) => sum + report.total, 0);
+    ) ?? 0) +
+    (kupatTahuSalesReports ?? []).reduce(
+      (sum, report) => sum + sumDetailsByItem(report, "Lain lain Kupat Tahu"),
+      0
+    ) +
+    expenseReports.reduce((sum, report) => sum + report.total, 0);
   const dashboardLaba =
     dashboardOmset -
     dashboardModal -
@@ -1557,8 +1664,11 @@ function DashboardView({
               value={selectedChartKiosk}
               onChange={(event) => setSelectedChartKiosk(event.target.value)}
             >
-              {kiosks.map((kiosk) => (
-                <option key={kiosk.key}>{kiosk.name}</option>
+              {(chartLocations.length
+                ? chartLocations
+                : kiosks.map((kiosk) => kiosk.name)
+              ).map((location) => (
+                <option key={location}>{location}</option>
               ))}
             </Select>
           </CardHeader>
@@ -1851,6 +1961,7 @@ function SalesView({
     ciherang: { grabGofood: 0, otherCost: 0, qris: 0, salary: 0 },
     wadas: { grabGofood: 0, otherCost: 0, qris: 0, salary: 0 }
   });
+  const [salesDate, setSalesDate] = useState(getTodayInputDate);
 
   const saleQty = saleQtyByKiosk[selectedKiosk];
   const salesCosts = salesCostsByKiosk[selectedKiosk];
@@ -1909,6 +2020,7 @@ function SalesView({
       body: JSON.stringify({
         cashOwner: ownerCashReceived,
         costs: salesCosts,
+        date: salesDate,
         items: materials.map((item) => ({
           buy: item.buy,
           code: item.code,
@@ -1942,6 +2054,16 @@ function SalesView({
           <CardTitle>Input Penjualan Kios</CardTitle>
         </CardHeader>
         <CardContent className="space-y-5">
+          <div className="max-w-xs">
+            <Field label="Tanggal">
+              <Input
+                type="date"
+                value={salesDate}
+                onChange={(event) => setSalesDate(event.target.value)}
+              />
+            </Field>
+          </div>
+
           <Table>
             <TableHeader>
               <TableRow>
@@ -2065,6 +2187,7 @@ function PurchaseView({
   const [editablePurchasePrices, setEditablePurchasePrices] = useState<
     Record<string, boolean>
   >({});
+  const [purchaseDate, setPurchaseDate] = useState(getTodayInputDate);
   const [purchaseNote, setPurchaseNote] = useState("Belanja bahan baku");
   const [purchaseOfficer, setPurchaseOfficer] = useState("Operator Gudang");
   const [shippingCost, setShippingCost] = useState(0);
@@ -2086,6 +2209,7 @@ function PurchaseView({
     setSaveStatus("Menyimpan belanja dan harga beli...");
     const response = await fetch("/api/purchases", {
       body: JSON.stringify({
+        date: purchaseDate,
         items: materials.map((item) => ({
           code: item.code,
           name: item.name,
@@ -2119,7 +2243,11 @@ function PurchaseView({
       <CardContent className="space-y-5">
         <div className="grid gap-4 md:grid-cols-[1fr_1fr_1.6fr]">
           <Field label="Tanggal">
-            <Input type="date" defaultValue="2026-06-28" />
+            <Input
+              type="date"
+              value={purchaseDate}
+              onChange={(event) => setPurchaseDate(event.target.value)}
+            />
           </Field>
           <Field label="Petugas">
             <Input
@@ -2250,6 +2378,7 @@ function DistributionView({
   onSaved: () => Promise<void>;
 }) {
   const [destination, setDestination] = useState<KioskKey>("wadas");
+  const [distributionDate, setDistributionDate] = useState(getTodayInputDate);
   const [distributionQty, setDistributionQty] = useState<NumberMap>({});
   const [distributionOfficer, setDistributionOfficer] = useState("Admin");
   const [saveStatus, setSaveStatus] = useState("");
@@ -2260,6 +2389,7 @@ function DistributionView({
       kiosks.find((kiosk) => kiosk.key === destination)?.name ?? destination;
     const response = await fetch("/api/distributions", {
       body: JSON.stringify({
+        date: distributionDate,
         destination,
         destinationName,
         items: materials.map((item) => ({
@@ -2280,6 +2410,10 @@ function DistributionView({
 
     const result = (await response.json()) as { number: string };
     setSaveStatus(`Distribusi tersimpan ke backend dengan nomor ${result.number}.`);
+    setDestination("wadas");
+    setDistributionDate(getTodayInputDate());
+    setDistributionOfficer("");
+    setDistributionQty({});
     await onSaved();
   }
 
@@ -2291,7 +2425,11 @@ function DistributionView({
       <CardContent className="space-y-5">
         <div className="grid gap-4 md:grid-cols-4">
           <Field label="Tanggal">
-            <Input type="date" defaultValue="2026-06-28" />
+            <Input
+              type="date"
+              value={distributionDate}
+              onChange={(event) => setDistributionDate(event.target.value)}
+            />
           </Field>
           <Field label="Lokasi asal">
             <Input value="Gudang Utama" readOnly />
@@ -2378,6 +2516,7 @@ function DistributionView({
 }
 
 function ExpenseView({ onSaved }: { onSaved: () => Promise<void> }) {
+  const [expenseDate, setExpenseDate] = useState(getTodayInputDate);
   const [expenseAmount, setExpenseAmount] = useState(0);
   const [expenseKind, setExpenseKind] = useState("Bensin");
   const [expenseLocation, setExpenseLocation] = useState("Umum");
@@ -2388,6 +2527,7 @@ function ExpenseView({ onSaved }: { onSaved: () => Promise<void> }) {
     const response = await fetch("/api/expenses", {
       body: JSON.stringify({
         amount: expenseAmount,
+        date: expenseDate,
         kind: expenseKind,
         location: expenseLocation,
         source: "Manual"
@@ -2414,7 +2554,11 @@ function ExpenseView({ onSaved }: { onSaved: () => Promise<void> }) {
       <CardContent className="space-y-5">
         <div className="grid gap-4 md:grid-cols-5">
           <Field label="Tanggal">
-            <Input type="date" defaultValue="2026-06-28" />
+            <Input
+              type="date"
+              value={expenseDate}
+              onChange={(event) => setExpenseDate(event.target.value)}
+            />
           </Field>
           <Field label="Jenis biaya">
             <Select
@@ -2483,6 +2627,185 @@ function ExpenseView({ onSaved }: { onSaved: () => Promise<void> }) {
         <Button onClick={saveExpense}>
           <ReceiptText />
           Simpan Biaya
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+function KupatTahuPurchaseView({ onSaved }: { onSaved: () => Promise<void> }) {
+  const [purchaseDate, setPurchaseDate] = useState(getTodayInputDate);
+  const [amount, setAmount] = useState(0);
+  const [note, setNote] = useState("Belanja Kupat Tahu");
+  const [saveStatus, setSaveStatus] = useState("");
+
+  async function savePurchase() {
+    setSaveStatus("Menyimpan belanja Kupat Tahu...");
+    const response = await fetch("/api/kupat-tahu", {
+      body: JSON.stringify({
+        amount,
+        date: purchaseDate,
+        kind: "Belanja",
+        note
+      }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST"
+    });
+
+    if (!response.ok) {
+      setSaveStatus("Belanja Kupat Tahu gagal disimpan.");
+      return;
+    }
+
+    const result = (await response.json()) as { number: string };
+    setSaveStatus(`Belanja Kupat Tahu tersimpan dengan nomor ${result.number}.`);
+    setAmount(0);
+    setNote("Belanja Kupat Tahu");
+    setPurchaseDate(getTodayInputDate());
+    await onSaved();
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Belanja Kupat Tahu</CardTitle>
+        <CardDescription>
+          Transaksi belanja dicatat sebagai aktivitas dan report Kupat Tahu.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        <div className="grid gap-4 md:grid-cols-[1fr_1fr_1.5fr]">
+          <Field label="Tanggal">
+            <Input
+              type="date"
+              value={purchaseDate}
+              onChange={(event) => setPurchaseDate(event.target.value)}
+            />
+          </Field>
+          <Field label="Nilai Belanja">
+            <NumberInput value={amount} onValueChange={setAmount} />
+          </Field>
+          <Field label="Catatan">
+            <Input value={note} onChange={(event) => setNote(event.target.value)} />
+          </Field>
+        </div>
+
+        <SummaryTile label="Total Belanja Kupat Tahu" value={formatCurrency(amount)} strong />
+
+        {saveStatus ? (
+          <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm font-medium text-emerald-800">
+            {saveStatus}
+          </div>
+        ) : null}
+
+        <Button onClick={savePurchase}>
+          <ShoppingCart />
+          Simpan Belanja Kupat Tahu
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+function KupatTahuSalesView({ onSaved }: { onSaved: () => Promise<void> }) {
+  const [salesDate, setSalesDate] = useState(getTodayInputDate);
+  const [portionQty, setPortionQty] = useState(0);
+  const [salary, setSalary] = useState(0);
+  const [qris, setQris] = useState(0);
+  const [otherCost, setOtherCost] = useState(0);
+  const [note, setNote] = useState("Penjualan Kupat Tahu");
+  const [saveStatus, setSaveStatus] = useState("");
+  const pricePerPortion = 10000;
+  const omset = portionQty * pricePerPortion;
+  const grossIncome = Math.round(omset * 0.4);
+  const modal = omset - grossIncome;
+  const netIncome = grossIncome - salary - otherCost;
+  const cash = omset - salary - qris - otherCost;
+
+  async function saveSales() {
+    setSaveStatus("Menyimpan penjualan Kupat Tahu...");
+    const response = await fetch("/api/kupat-tahu", {
+      body: JSON.stringify({
+        date: salesDate,
+        kind: "Penjualan",
+        note,
+        otherCost,
+        portionQty,
+        qris,
+        salary
+      }),
+      headers: { "Content-Type": "application/json" },
+      method: "POST"
+    });
+
+    if (!response.ok) {
+      setSaveStatus("Penjualan Kupat Tahu gagal disimpan.");
+      return;
+    }
+
+    const result = (await response.json()) as { number: string };
+    setSaveStatus(`Penjualan Kupat Tahu tersimpan dengan nomor ${result.number}.`);
+    setPortionQty(0);
+    setSalary(0);
+    setQris(0);
+    setOtherCost(0);
+    setNote("Penjualan Kupat Tahu");
+    setSalesDate(getTodayInputDate());
+    await onSaved();
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Penjualan Kupat Tahu</CardTitle>
+        <CardDescription>
+          Harga jual per porsi Rp 10.000 dengan margin laba kotor 40%.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
+          <Field label="Tanggal">
+            <Input
+              type="date"
+              value={salesDate}
+              onChange={(event) => setSalesDate(event.target.value)}
+            />
+          </Field>
+          <Field label="Jumlah Porsi Terjual">
+            <NumberInput value={portionQty} onValueChange={setPortionQty} />
+          </Field>
+          <Field label="Gaji">
+            <NumberInput value={salary} onValueChange={setSalary} />
+          </Field>
+          <Field label="QRIS">
+            <NumberInput value={qris} onValueChange={setQris} />
+          </Field>
+          <Field label="Lain lain">
+            <NumberInput value={otherCost} onValueChange={setOtherCost} />
+          </Field>
+          <Field label="Catatan">
+            <Input value={note} onChange={(event) => setNote(event.target.value)} />
+          </Field>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
+          <SummaryTile label="Harga per Porsi" value={formatCurrency(pricePerPortion)} />
+          <SummaryTile label="Omset" value={formatCurrency(omset)} />
+          <SummaryTile label="Modal 60%" value={formatCurrency(modal)} />
+          <SummaryTile label="Laba Kotor 40%" value={formatCurrency(grossIncome)} strong />
+          <SummaryTile label="Pendapatan Bersih" value={formatCurrency(netIncome)} strong />
+          <SummaryTile label="Cash" value={formatCurrency(cash)} />
+        </div>
+
+        {saveStatus ? (
+          <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm font-medium text-emerald-800">
+            {saveStatus}
+          </div>
+        ) : null}
+
+        <Button onClick={saveSales}>
+          <Utensils />
+          Simpan Penjualan Kupat Tahu
         </Button>
       </CardContent>
     </Card>
@@ -3098,27 +3421,66 @@ function FinanceView({
   const monthReports = filterByMonth(reportRows, selectedMonth);
   const useFallbackFinance = reports === undefined;
   const salesReports = monthReports.filter((report) => report.type === "Penjualan");
+  const kupatTahuSalesReports = monthReports.filter(
+    (report) => report.type === "Kupat Tahu Penjualan"
+  );
   const expenseReports = monthReports.filter(
     (report) => report.type === "Biaya Lain Lain"
   );
+  const kupatTahuFinance = {
+    cash: kupatTahuSalesReports.reduce(
+      (sum, report) => sum + sumDetailsByItem(report, "Cash Kupat Tahu"),
+      0
+    ),
+    gaji: kupatTahuSalesReports.reduce(
+      (sum, report) => sum + sumDetailsByItem(report, "Gaji Kupat Tahu"),
+      0
+    ),
+    gross: kupatTahuSalesReports.reduce(
+      (sum, report) => sum + sumDetailsByItem(report, "Laba Kotor Kupat Tahu"),
+      0
+    ),
+    modal: kupatTahuSalesReports.reduce(
+      (sum, report) => sum + sumDetailsByItem(report, "Modal Kupat Tahu"),
+      0
+    ),
+    net: kupatTahuSalesReports.reduce(
+      (sum, report) => sum + sumDetailsByItem(report, "Pendapatan Bersih Kupat Tahu"),
+      0
+    ),
+    omset: kupatTahuSalesReports.reduce((sum, report) => sum + report.total, 0),
+    otherCost: kupatTahuSalesReports.reduce(
+      (sum, report) => sum + sumDetailsByItem(report, "Lain lain Kupat Tahu"),
+      0
+    ),
+    qris: kupatTahuSalesReports.reduce(
+      (sum, report) => sum + sumDetailsByItem(report, "QRIS Kupat Tahu"),
+      0
+    )
+  };
   const finance = {
     gaji:
-      salesReports.reduce((sum, report) => sum + sumDetailsByItem(report, "Gaji Karyawan"), 0) ||
+      (salesReports.reduce((sum, report) => sum + sumDetailsByItem(report, "Gaji Karyawan"), 0) +
+        kupatTahuFinance.gaji) ||
       (useFallbackFinance ? monthlyFinance.gaji : 0),
     grabGofood:
       salesReports.reduce((sum, report) => sum + sumDetailsByItem(report, "Grab/GoFood"), 0) ||
       (useFallbackFinance ? monthlyFinance.grabGofood : 0),
     qris:
-      salesReports.reduce((sum, report) => sum + sumDetailsByItem(report, "QRIS"), 0),
+      salesReports.reduce((sum, report) => sum + sumDetailsByItem(report, "QRIS"), 0) +
+      kupatTahuFinance.qris,
     modal:
-      salesReports.reduce((sum, report) => sum + sumDetailsByItem(report, "Modal Penjualan"), 0) ||
+      (salesReports.reduce((sum, report) => sum + sumDetailsByItem(report, "Modal Penjualan"), 0) +
+        kupatTahuFinance.modal) ||
       (useFallbackFinance ? monthlyFinance.modal : 0),
     omset:
-      salesReports.reduce((sum, report) => sum + report.total, 0) ||
+      (salesReports.reduce((sum, report) => sum + report.total, 0) +
+        kupatTahuFinance.omset) ||
       (useFallbackFinance ? monthlyFinance.omset : 0),
     otherCost:
       salesReports.reduce((sum, report) => sum + sumDetailsByItem(report, "Lain lain"), 0) +
-      expenseReports.reduce((sum, report) => sum + report.total, 0)
+      expenseReports.reduce((sum, report) => sum + report.total, 0) +
+      kupatTahuFinance.otherCost
   };
   const gross = finance.omset - finance.modal;
   const rows = [
@@ -3128,6 +3490,11 @@ function FinanceView({
     ["Gaji", finance.gaji, "Pengurang laba"],
     ["Grab/GoFood", finance.grabGofood, "Pengurang cash diterima owner"],
     ["QRIS", finance.qris, "Pengurang cash diterima owner"],
+    ["Omset Kupat Tahu", kupatTahuFinance.omset, "Penambah laba dari produk Kupat Tahu"],
+    ["Laba Kotor Kupat Tahu", kupatTahuFinance.gross, "40% dari omset Kupat Tahu"],
+    ["Gaji Kupat Tahu", kupatTahuFinance.gaji, "Pengurang pendapatan dan cash"],
+    ["QRIS Kupat Tahu", kupatTahuFinance.qris, "Pengurang cash Kupat Tahu"],
+    ["Pendapatan Bersih Kupat Tahu", kupatTahuFinance.net, "Laba kotor dikurangi gaji dan lain lain"],
     ["Biaya Lain Lain Transaksi", finance.otherCost, "Pengurang laba dari transaksi"],
     ["Parameter Biaya Bulanan", totalMonthlyCost, "Pengurang laba bulanan"],
     ["Pendapatan Tambahan", totalAdditionalIncome, "Penambah laba bersih"]
@@ -3336,6 +3703,7 @@ function StockOpnameView({
   onSaved: () => Promise<void>;
 }) {
   const [selectedLocation, setSelectedLocation] = useState<LocationKey>("gudang");
+  const [opnameDate, setOpnameDate] = useState(getTodayInputDate);
   const [lastUpdated, setLastUpdated] = useState("");
   const [physicalStockByLocation, setPhysicalStockByLocation] = useState<
     Record<LocationKey, NumberMap>
@@ -3366,6 +3734,7 @@ function StockOpnameView({
   async function updateDatabase() {
     const response = await fetch("/api/stock-opname", {
       body: JSON.stringify({
+        date: opnameDate,
         items: materials.map((item) => {
           const systemStock = item.stock[selectedLocation];
           return {
@@ -3425,7 +3794,14 @@ function StockOpnameView({
           </div>
         </CardHeader>
         <CardContent className="space-y-5">
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-4">
+            <Field label="Tanggal">
+              <Input
+                type="date"
+                value={opnameDate}
+                onChange={(event) => setOpnameDate(event.target.value)}
+              />
+            </Field>
             <SummaryTile label="Tempat" value={location.name} />
             <SummaryTile
               label="Total Item"
@@ -3876,14 +4252,15 @@ function SimpleReport({
   icon: Icon,
   rows: backendRows
 }: {
-  type: DetailReportType;
+  type: AppTransactionType;
   title: string;
   icon: React.ElementType;
   rows?: TransactionReportRow[];
 }) {
+  const fallbackRows = useMemo(() => transactionReports[type] ?? [], [type]);
   const sourceRows = useMemo(
-    () => (backendRows === undefined ? transactionReports[type] : backendRows),
-    [backendRows, type]
+    () => (backendRows === undefined ? fallbackRows : backendRows),
+    [backendRows, fallbackRows]
   );
   const [selectedMonth, setSelectedMonth] = useState(() =>
     getDefaultReportMonth(sourceRows)
@@ -4193,6 +4570,10 @@ function MobileSelect({
       <option value="Belanja">Belanja</option>
       <option value="Distribusi">Distribusi</option>
       <option value="Biaya Lain lain">Biaya Lain lain</option>
+      <option value="Kupat Tahu Belanja">Kupat Tahu - Belanja</option>
+      <option value="Kupat Tahu Penjualan">Kupat Tahu - Penjualan</option>
+      <option value="Kupat Tahu Report Belanja">Kupat Tahu - Report Belanja</option>
+      <option value="Kupat Tahu Report Penjualan">Kupat Tahu - Report Penjualan</option>
       <option value="Opname Stok">Opname Stok</option>
       {(
         [

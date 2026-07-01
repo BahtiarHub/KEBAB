@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm";
 
 import { db, ensureDatabase } from "@/db";
 import * as schema from "@/db/schema";
+import { formatDateForReport } from "@/lib/date";
 
 type SaleItem = {
   buy: number;
@@ -18,6 +19,7 @@ export async function POST(request: Request) {
   const body = (await request.json()) as {
     cashOwner?: number;
     costs?: { grabGofood: number; otherCost: number; qris?: number; salary: number };
+    date?: string;
     items?: SaleItem[];
     kiosk?: string;
     kioskKey?: string;
@@ -33,11 +35,7 @@ export async function POST(request: Request) {
   const soldItems = body.items.filter((item) => item.qty > 0);
   const totalSales = body.totalSales ?? 0;
   const modal = body.modal ?? 0;
-  const date = new Intl.DateTimeFormat("id-ID", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric"
-  }).format(new Date());
+  const date = formatDateForReport(body.date);
 
   await db.insert(schema.transactions)
     .values({
