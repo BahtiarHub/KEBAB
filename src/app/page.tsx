@@ -69,6 +69,7 @@ type View =
 
 type ReportType =
   | "Penjualan"
+  | "Semua Penjualan"
   | "Belanja"
   | "Distribusi"
   | "Biaya Lain Lain"
@@ -77,7 +78,11 @@ type LocationKey = "gudang" | "wadas" | "ciherang" | "bubulak";
 type KioskKey = Exclude<LocationKey, "gudang">;
 type NumberMap = Record<string, number>;
 type UserRole = "Admin" | "Operator";
-type TransactionType = Exclude<ReportType, "Opname Stok">;
+type TransactionType =
+  | "Penjualan"
+  | "Belanja"
+  | "Distribusi"
+  | "Biaya Lain Lain";
 type AppTransactionType =
   | TransactionType
   | "Kupat Tahu Belanja"
@@ -1244,6 +1249,7 @@ export default function Home() {
                 {(
                   [
                     "Penjualan",
+                    "Semua Penjualan",
                     "Belanja",
                     "Distribusi",
                     "Biaya Lain Lain",
@@ -1375,13 +1381,11 @@ export default function Home() {
               />
             ) : null}
             {activeView === "Kupat Tahu Report Penjualan" ? (
-              <SimpleReport
-                icon={Utensils}
-                rows={backendData?.reports?.filter(
+              <SalesReport
+                mode="kupatTahu"
+                reports={backendData?.reports?.filter(
                   (report) => report.type === "Kupat Tahu Penjualan"
                 )}
-                title="Report Penjualan Kupat Tahu"
-                type="Kupat Tahu Penjualan"
               />
             ) : null}
             {activeView === "Opname Stok" ? (
@@ -3890,6 +3894,10 @@ function ReportView({
     return <SalesReport reports={reports?.filter((report) => report.type === "Penjualan")} />;
   }
 
+  if (reportType === "Semua Penjualan") {
+    return <AllSalesDailyReport reports={reports} />;
+  }
+
   if (reportType === "Belanja") {
     return (
       <SimpleReport
@@ -3926,13 +3934,211 @@ function ReportView({
   );
 }
 
-function SalesReport({ reports }: { reports?: TransactionReportRow[] }) {
-  const [activeTab, setActiveTab] = useState<"Kios Bubulak" | "Kios Ciherang" | "Kios Wadas" | "Total Penjualan">("Kios Wadas");
-  const tabs = ["Kios Wadas", "Kios Ciherang", "Kios Bubulak", "Total Penjualan"] as const;
-  const sourceRows = useMemo(
-    () => (reports === undefined ? dailySalesReports : reports.map(toDailySalesReportRow)),
-    [reports]
+function formatCurrencyDash(value: number) {
+  return value ? formatCurrency(value) : "-";
+}
+
+function getDayLabel(date: string) {
+  const firstPart = date.split(" ").filter(Boolean)[0];
+  return firstPart ? String(Number(firstPart)) : date;
+}
+
+function AllSalesDailyReport({ reports }: { reports?: TransactionReportRow[] }) {
+  const sourceRows = useMemo(() => {
+    if (reports === undefined) {
+      return dailySalesReports;
+    }
+
+    return reports
+      .filter(
+        (report) =>
+          report.type === "Penjualan" || report.type === "Kupat Tahu Penjualan"
+      )
+      .map((report) =>
+        report.type === "Kupat Tahu Penjualan"
+          ? toKupatTahuDailySalesReportRow(report)
+          : toDailySalesReportRow(report)
+      );
+  }, [reports]);
+  const [selectedMonth, setSelectedMonth] = useState(() =>
+    getDefaultReportMonth(sourceRows)
   );
+  const reportMonths = useMemo(() => getAvailableMonths(sourceRows), [sourceRows]);
+
+  useEffect(() => {
+    const options = reportMonths.length ? reportMonths : monthOptions;
+    const nextMonth = getDefaultReportMonth(sourceRows);
+    setSelectedMonth((current) => (options.includes(current) ? current : nextMonth));
+  }, [reportMonths, sourceRows]);
+
+  const monthRows = filterByMonth(sourceRows, selectedMonth);
+  const rows = aggregateDailySales(monthRows);
+  const summary = rows.reduce(
+    (total, row) => {
+      const net = row.sales - row.modal - row.salary - row.otherCost;
+      const cash = net - row.grabGofood - row.qris;
+
+      return {
+        cash: total.cash + cash,
+        grabGofood: total.grabGofood + row.grabGofood,
+        modal: total.modal + row.modal,
+        net: total.net + net,
+        otherCost: total.otherCost + row.otherCost,
+        salary: total.salary + row.salary,
+        sales: total.sales + row.sales
+      };
+    },
+    {
+      cash: 0,
+      grabGofood: 0,
+      modal: 0,
+      net: 0,
+      otherCost: 0,
+      salary: 0,
+      sales: 0
+    }
+  );
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <CardTitle>Report Semua Penjualan Harian</CardTitle>
+          <CardDescription>
+            Gabungan transaksi Kebab dan Kupat Tahu. QRIS dihitung sebagai pengurang cash.
+          </CardDescription>
+        </div>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Select
+            className="w-full sm:w-[180px]"
+            value={selectedMonth}
+            onChange={(event) => setSelectedMonth(event.target.value)}
+          >
+            {(reportMonths.length ? reportMonths : monthOptions).map((month) => (
+              <option key={month}>{month}</option>
+            ))}
+          </Select>
+          <Button onClick={() => downloadExport("semua-penjualan")}>
+            <Download />
+            Export
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        <div className="grid gap-4 md:grid-cols-4">
+          <SummaryTile label="Omset Kotor" value={formatCurrency(summary.sales)} />
+          <SummaryTile label="Modal" value={formatCurrency(summary.modal)} />
+          <SummaryTile label="Penjualan Bersih" value={formatCurrency(summary.net)} strong />
+          <SummaryTile label="Cash" value={formatCurrency(summary.cash)} />
+        </div>
+
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Tanggal</TableHead>
+              <TableHead>Omset Kotor</TableHead>
+              <TableHead>Grab</TableHead>
+              <TableHead>Gaji</TableHead>
+              <TableHead>Modal</TableHead>
+              <TableHead>Lain lain</TableHead>
+              <TableHead>Penjualan Bersih</TableHead>
+              <TableHead>Cash</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.length === 0 ? (
+              <TableRow>
+                <TableCell
+                  className="py-8 text-center text-sm font-medium text-muted-foreground"
+                  colSpan={8}
+                >
+                  Belum ada data penjualan di Turso untuk periode ini.
+                </TableCell>
+              </TableRow>
+            ) : null}
+            {rows.map((row) => {
+              const net = row.sales - row.modal - row.salary - row.otherCost;
+              const cash = net - row.grabGofood - row.qris;
+
+              return (
+                <TableRow key={row.date}>
+                  <TableCell className="font-medium">{getDayLabel(row.date)}</TableCell>
+                  <TableCell>{formatCurrencyDash(row.sales)}</TableCell>
+                  <TableCell>{formatCurrencyDash(row.grabGofood)}</TableCell>
+                  <TableCell>{formatCurrencyDash(row.salary)}</TableCell>
+                  <TableCell>{formatCurrencyDash(row.modal)}</TableCell>
+                  <TableCell>{formatCurrencyDash(row.otherCost)}</TableCell>
+                  <TableCell className="font-bold text-emerald-700">
+                    {formatCurrencyDash(net)}
+                  </TableCell>
+                  <TableCell className="font-bold text-amber-800">
+                    {formatCurrencyDash(cash)}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+            {rows.length ? (
+              <TableRow className="bg-amber-50">
+                <TableCell className="font-black">Total</TableCell>
+                <TableCell className="font-black">
+                  {formatCurrencyDash(summary.sales)}
+                </TableCell>
+                <TableCell className="font-black">
+                  {formatCurrencyDash(summary.grabGofood)}
+                </TableCell>
+                <TableCell className="font-black">
+                  {formatCurrencyDash(summary.salary)}
+                </TableCell>
+                <TableCell className="font-black">
+                  {formatCurrencyDash(summary.modal)}
+                </TableCell>
+                <TableCell className="font-black">
+                  {formatCurrencyDash(summary.otherCost)}
+                </TableCell>
+                <TableCell className="font-black text-emerald-700">
+                  {formatCurrencyDash(summary.net)}
+                </TableCell>
+                <TableCell className="font-black text-amber-800">
+                  {formatCurrencyDash(summary.cash)}
+                </TableCell>
+              </TableRow>
+            ) : null}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  );
+}
+
+function SalesReport({
+  mode = "kebab",
+  reports
+}: {
+  mode?: "kebab" | "kupatTahu";
+  reports?: TransactionReportRow[];
+}) {
+  const defaultTab = mode === "kupatTahu" ? "Kupat Tahu" : "Kios Wadas";
+  const [activeTab, setActiveTab] = useState(defaultTab);
+  const tabs =
+    mode === "kupatTahu"
+      ? (["Kupat Tahu", "Total Penjualan"] as const)
+      : (["Kios Wadas", "Kios Ciherang", "Kios Bubulak", "Total Penjualan"] as const);
+  const sourceRows = useMemo(
+    () =>
+      reports === undefined
+        ? mode === "kebab"
+          ? dailySalesReports
+          : []
+        : reports.map(
+            mode === "kupatTahu"
+              ? toKupatTahuDailySalesReportRow
+              : toDailySalesReportRow
+          ),
+    [mode, reports]
+  );
+  useEffect(() => {
+    setActiveTab(defaultTab);
+  }, [defaultTab]);
   const [selectedMonth, setSelectedMonth] = useState(() =>
     getDefaultReportMonth(sourceRows)
   );
@@ -3972,7 +4178,11 @@ function SalesReport({ reports }: { reports?: TransactionReportRow[] }) {
       <Card>
         <CardHeader className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <CardTitle>Report Penjualan Harian</CardTitle>
+            <CardTitle>
+              {mode === "kupatTahu"
+                ? "Report Penjualan Harian Kupat Tahu"
+                : "Report Penjualan Harian"}
+            </CardTitle>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row">
             <Select
@@ -3984,7 +4194,13 @@ function SalesReport({ reports }: { reports?: TransactionReportRow[] }) {
                 <option key={month}>{month}</option>
               ))}
             </Select>
-            <Button onClick={() => downloadExport("penjualan")}>
+            <Button
+              onClick={() =>
+                downloadExport(
+                  mode === "kupatTahu" ? "kupat-tahu-penjualan" : "penjualan"
+                )
+              }
+            >
               <Download />
               Export
             </Button>
@@ -4128,6 +4344,25 @@ function toDailySalesReportRow(report: TransactionReportRow): DailySalesReportRo
     date: report.date,
     grabGofood,
     location: report.location,
+    modal,
+    orderCount: 1,
+    otherCost,
+    qris,
+    salary,
+    sales: report.total
+  };
+}
+
+function toKupatTahuDailySalesReportRow(report: TransactionReportRow): DailySalesReportRow {
+  const modal = sumDetailsByItem(report, "Modal Kupat Tahu");
+  const salary = sumDetailsByItem(report, "Gaji Kupat Tahu");
+  const qris = sumDetailsByItem(report, "QRIS Kupat Tahu");
+  const otherCost = sumDetailsByItem(report, "Lain lain Kupat Tahu");
+
+  return {
+    date: report.date,
+    grabGofood: 0,
+    location: "Kupat Tahu",
     modal,
     orderCount: 1,
     otherCost,
@@ -4578,6 +4813,7 @@ function MobileSelect({
       {(
         [
           "Penjualan",
+          "Semua Penjualan",
           "Belanja",
           "Distribusi",
           "Biaya Lain Lain",

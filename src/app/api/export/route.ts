@@ -58,6 +58,19 @@ export async function GET(request: Request) {
     });
   }
 
+  if (rawType === "semua-penjualan" || rawType === "semua penjualan") {
+    const rows = await withDetails();
+    return NextResponse.json({
+      data: rows.filter(
+        (transaction) =>
+          transaction.type === "Penjualan" ||
+          transaction.type === "Kupat Tahu Penjualan"
+      ),
+      exportedAt: new Date().toISOString(),
+      type: rawType
+    });
+  }
+
   return NextResponse.json({
     data: await withDetails(transactionType),
     exportedAt: new Date().toISOString(),
