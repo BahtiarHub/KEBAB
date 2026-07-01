@@ -61,6 +61,7 @@ type View =
   | "Kupat Tahu Report Belanja"
   | "Kupat Tahu Report Penjualan"
   | "Report"
+  | "Semua Penjualan"
   | "Neraca Keuangan"
   | "Opname Stok"
   | "Parameter"
@@ -69,7 +70,6 @@ type View =
 
 type ReportType =
   | "Penjualan"
-  | "Semua Penjualan"
   | "Belanja"
   | "Distribusi"
   | "Biaya Lain Lain"
@@ -1249,7 +1249,6 @@ export default function Home() {
                 {(
                   [
                     "Penjualan",
-                    "Semua Penjualan",
                     "Belanja",
                     "Distribusi",
                     "Biaya Lain Lain",
@@ -1267,6 +1266,14 @@ export default function Home() {
                   />
                 ))}
               </NavGroup>
+
+              <NavButton
+                active={activeView === "Semua Penjualan"}
+                collapsed={sidebarCollapsed}
+                icon={FileSpreadsheet}
+                label="Semua Penjualan"
+                onClick={() => setActiveView("Semua Penjualan")}
+              />
 
               <NavButton
                 active={activeView === "Neraca Keuangan"}
@@ -1397,6 +1404,9 @@ export default function Home() {
                 reports={backendData?.reports}
                 stockOpnames={backendData?.stockOpnames}
               />
+            ) : null}
+            {activeView === "Semua Penjualan" ? (
+              <AllSalesDailyReport reports={backendData?.reports} />
             ) : null}
             {activeView === "Neraca Keuangan" ? (
               <FinanceView
@@ -3894,10 +3904,6 @@ function ReportView({
     return <SalesReport reports={reports?.filter((report) => report.type === "Penjualan")} />;
   }
 
-  if (reportType === "Semua Penjualan") {
-    return <AllSalesDailyReport reports={reports} />;
-  }
-
   if (reportType === "Belanja") {
     return (
       <SimpleReport
@@ -4810,10 +4816,10 @@ function MobileSelect({
       <option value="Kupat Tahu Report Belanja">Kupat Tahu - Report Belanja</option>
       <option value="Kupat Tahu Report Penjualan">Kupat Tahu - Report Penjualan</option>
       <option value="Opname Stok">Opname Stok</option>
+      <option value="Semua Penjualan">Semua Penjualan</option>
       {(
         [
           "Penjualan",
-          "Semua Penjualan",
           "Belanja",
           "Distribusi",
           "Biaya Lain Lain",
