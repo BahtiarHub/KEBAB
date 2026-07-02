@@ -1056,6 +1056,8 @@ export default function Home() {
             ? "Report Belanja Kupat Tahu"
             : activeView === "Kupat Tahu Report Penjualan"
               ? "Report Penjualan Kupat Tahu"
+              : activeView === "Semua Penjualan"
+                ? "Report Total Penjualan"
       : activeView === "Report"
         ? `Report ${reportType}`
         : activeView;
@@ -1204,7 +1206,7 @@ export default function Home() {
                 collapsed={sidebarCollapsed}
                 icon={Store}
                 isOpen={openGroups.sales}
-                label="Penjualan"
+                label="Penjualan Kebab"
                 onToggle={() =>
                   setOpenGroups((current) => ({
                     ...current,
@@ -1318,7 +1320,7 @@ export default function Home() {
                 active={activeView === "Semua Penjualan"}
                 collapsed={sidebarCollapsed}
                 icon={FileSpreadsheet}
-                label="Semua Penjualan"
+                label="Report Total Penjualan"
                 onClick={() => setActiveView("Semua Penjualan")}
               />
 
@@ -4039,20 +4041,6 @@ function getDayLabel(date: string) {
   return firstPart ? String(Number(firstPart)) : date;
 }
 
-function ReportEditButton({ label }: { label: string }) {
-  return (
-    <Button
-      aria-label={`Edit ${label}`}
-      size="icon"
-      title={`Edit ${label}`}
-      type="button"
-      variant="outline"
-    >
-      <Pencil />
-    </Button>
-  );
-}
-
 function AllSalesDailyReport({ reports }: { reports?: TransactionReportRow[] }) {
   const sourceRows = useMemo(() => {
     if (reports === undefined) {
@@ -4113,7 +4101,7 @@ function AllSalesDailyReport({ reports }: { reports?: TransactionReportRow[] }) 
     <Card>
       <CardHeader className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <CardTitle>Report Semua Penjualan Harian</CardTitle>
+          <CardTitle>Report Total Penjualan Harian</CardTitle>
           <CardDescription>
             Gabungan transaksi Kebab dan Kupat Tahu. QRIS dihitung sebagai pengurang cash.
           </CardDescription>
@@ -4153,7 +4141,6 @@ function AllSalesDailyReport({ reports }: { reports?: TransactionReportRow[] }) 
               <TableHead>Lain lain</TableHead>
               <TableHead>Penjualan Bersih</TableHead>
               <TableHead>Cash</TableHead>
-              <TableHead>Aksi</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -4161,7 +4148,7 @@ function AllSalesDailyReport({ reports }: { reports?: TransactionReportRow[] }) 
               <TableRow>
                 <TableCell
                   className="py-8 text-center text-sm font-medium text-muted-foreground"
-                  colSpan={9}
+                  colSpan={8}
                 >
                   Belum ada data penjualan di Turso untuk periode ini.
                 </TableCell>
@@ -4184,9 +4171,6 @@ function AllSalesDailyReport({ reports }: { reports?: TransactionReportRow[] }) 
                   </TableCell>
                   <TableCell className="font-bold text-amber-800">
                     {formatCurrencyDash(cash)}
-                  </TableCell>
-                  <TableCell>
-                    <ReportEditButton label={`semua penjualan ${row.date}`} />
                   </TableCell>
                 </TableRow>
               );
@@ -4215,7 +4199,6 @@ function AllSalesDailyReport({ reports }: { reports?: TransactionReportRow[] }) 
                 <TableCell className="font-black text-amber-800">
                   {formatCurrencyDash(summary.cash)}
                 </TableCell>
-                <TableCell />
               </TableRow>
             ) : null}
           </TableBody>
@@ -4361,7 +4344,6 @@ function SalesReport({
                 <TableHead>Lain lain</TableHead>
                 <TableHead>Cash Owner</TableHead>
                 <TableHead>Laba Bersih</TableHead>
-                <TableHead>Aksi</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -4369,7 +4351,7 @@ function SalesReport({
                 <TableRow>
                   <TableCell
                     className="py-8 text-center text-sm font-medium text-muted-foreground"
-                    colSpan={activeTab === "Total Penjualan" ? 13 : 12}
+                    colSpan={activeTab === "Total Penjualan" ? 12 : 11}
                   >
                     Belum ada data penjualan di Turso untuk periode ini.
                   </TableCell>
@@ -4401,9 +4383,6 @@ function SalesReport({
                     </TableCell>
                     <TableCell className="font-bold text-emerald-700">
                       {formatCurrency(net)}
-                    </TableCell>
-                    <TableCell>
-                      <ReportEditButton label={`${row.location} ${row.date}`} />
                     </TableCell>
                   </TableRow>
                 );
@@ -4557,7 +4536,6 @@ function StockOpnameReport({ rows: backendRows }: { rows?: StockOpnameReportRow[
               <TableHead>Stok Fisik</TableHead>
               <TableHead>Selisih</TableHead>
               <TableHead>Petugas</TableHead>
-              <TableHead>Aksi</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -4565,7 +4543,7 @@ function StockOpnameReport({ rows: backendRows }: { rows?: StockOpnameReportRow[
               <TableRow>
                 <TableCell
                   className="py-8 text-center text-sm font-medium text-muted-foreground"
-                  colSpan={9}
+                  colSpan={8}
                 >
                   Belum ada data opname stok di Turso untuk periode ini.
                 </TableCell>
@@ -4592,9 +4570,6 @@ function StockOpnameReport({ rows: backendRows }: { rows?: StockOpnameReportRow[
                   {formatNumber(row.difference)}
                 </TableCell>
                 <TableCell>{row.officer}</TableCell>
-                <TableCell>
-                  <ReportEditButton label={`opname ${row.number}`} />
-                </TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -4721,7 +4696,6 @@ function SimpleReport({
                       >
                         Detail
                       </Button>
-                      <ReportEditButton label={row.number} />
                     </div>
                   </TableCell>
                 </TableRow>
@@ -4934,7 +4908,7 @@ function MobileSelect({
       <option value="Kupat Tahu Report Belanja">Kupat Tahu - Report Belanja</option>
       <option value="Kupat Tahu Report Penjualan">Kupat Tahu - Report Penjualan</option>
       <option value="Opname Stok">Opname Stok</option>
-      <option value="Semua Penjualan">Semua Penjualan</option>
+      <option value="Semua Penjualan">Report Total Penjualan</option>
       {(
         [
           "Penjualan",
