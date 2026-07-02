@@ -1459,6 +1459,8 @@ export default function Home() {
             ) : null}
             {activeView === "Neraca Keuangan" ? (
               <FinanceView
+                additionalIncomeValues={additionalIncomeValues}
+                monthlyCostValues={monthlyCostValues}
                 reports={backendData?.reports}
                 totalAdditionalIncome={totalAdditionalIncome}
                 totalMonthlyCost={totalMonthlyCost}
@@ -3502,10 +3504,14 @@ function MaintenanceUserView({
 }
 
 function FinanceView({
+  additionalIncomeValues,
+  monthlyCostValues,
   reports,
   totalAdditionalIncome,
   totalMonthlyCost
 }: {
+  additionalIncomeValues: NumberMap;
+  monthlyCostValues: NumberMap;
   reports?: TransactionReportRow[];
   totalAdditionalIncome: number;
   totalMonthlyCost: number;
@@ -3533,6 +3539,28 @@ function FinanceView({
   const expenseReports = monthReports.filter(
     (report) => report.type === "Biaya Lain Lain"
   );
+  const kebabFinance = {
+    gaji:
+      salesReports.reduce((sum, report) => sum + sumDetailsByItem(report, "Gaji Karyawan"), 0) ||
+      (useFallbackFinance ? monthlyFinance.gaji : 0),
+    grabGofood:
+      salesReports.reduce((sum, report) => sum + sumDetailsByItem(report, "Grab/GoFood"), 0) ||
+      (useFallbackFinance ? monthlyFinance.grabGofood : 0),
+    modal:
+      salesReports.reduce((sum, report) => sum + sumDetailsByItem(report, "Modal Penjualan"), 0) ||
+      (useFallbackFinance ? monthlyFinance.modal : 0),
+    omset:
+      salesReports.reduce((sum, report) => sum + report.total, 0) ||
+      (useFallbackFinance ? monthlyFinance.omset : 0),
+    otherCost: salesReports.reduce(
+      (sum, report) => sum + sumDetailsByItem(report, "Lain lain"),
+      0
+    ),
+    qris: salesReports.reduce(
+      (sum, report) => sum + sumDetailsByItem(report, "QRIS"),
+      0
+    )
+  };
   const kupatTahuFinance = {
     cash: kupatTahuSalesReports.reduce(
       (sum, report) => sum + sumDetailsByItem(report, "Cash Kupat Tahu"),
@@ -3564,133 +3592,67 @@ function FinanceView({
       0
     )
   };
+  const kebabCash =
+    kebabFinance.omset -
+    kebabFinance.grabGofood -
+    kebabFinance.qris -
+    kebabFinance.gaji -
+    kebabFinance.otherCost;
+  const kebabNet =
+    kebabFinance.omset -
+    kebabFinance.modal -
+    kebabFinance.gaji -
+    kebabFinance.otherCost;
+  const kupatCash =
+    kupatTahuFinance.cash ||
+    kupatTahuFinance.omset -
+      kupatTahuFinance.gaji -
+      kupatTahuFinance.qris -
+      kupatTahuFinance.otherCost;
   const finance = {
-    gaji:
-      (salesReports.reduce((sum, report) => sum + sumDetailsByItem(report, "Gaji Karyawan"), 0) +
-        kupatTahuFinance.gaji) ||
-      (useFallbackFinance ? monthlyFinance.gaji : 0),
-    grabGofood:
-      salesReports.reduce((sum, report) => sum + sumDetailsByItem(report, "Grab/GoFood"), 0) ||
-      (useFallbackFinance ? monthlyFinance.grabGofood : 0),
-    qris:
-      salesReports.reduce((sum, report) => sum + sumDetailsByItem(report, "QRIS"), 0) +
-      kupatTahuFinance.qris,
-    modal:
-      (salesReports.reduce((sum, report) => sum + sumDetailsByItem(report, "Modal Penjualan"), 0) +
-        kupatTahuFinance.modal) ||
-      (useFallbackFinance ? monthlyFinance.modal : 0),
-    omset:
-      (salesReports.reduce((sum, report) => sum + report.total, 0) +
-        kupatTahuFinance.omset) ||
-      (useFallbackFinance ? monthlyFinance.omset : 0),
-    otherCost:
-      salesReports.reduce((sum, report) => sum + sumDetailsByItem(report, "Lain lain"), 0) +
-      expenseReports.reduce((sum, report) => sum + report.total, 0) +
-      kupatTahuFinance.otherCost
+    gaji: kebabFinance.gaji + kupatTahuFinance.gaji,
+    grabGofood: kebabFinance.grabGofood,
+    modal: kebabFinance.modal + kupatTahuFinance.modal,
+    omset: kebabFinance.omset + kupatTahuFinance.omset,
+    otherCost: kebabFinance.otherCost + kupatTahuFinance.otherCost,
+    qris: kebabFinance.qris + kupatTahuFinance.qris
   };
-  const gross = finance.omset - finance.modal;
-  const rows = [
-    ["Total Omset", finance.omset, "Penambah laba"],
-    ["Modal", finance.modal, "Pengurang laba"],
-    ["Laba Kotor", gross, "Omset dikurangi modal"],
-    ["Gaji", finance.gaji, "Pengurang laba"],
-    ["Grab/GoFood", finance.grabGofood, "Pengurang cash diterima owner"],
-    ["QRIS", finance.qris, "Pengurang cash diterima owner"],
-    ["Omset Kupat Tahu", kupatTahuFinance.omset, "Penambah laba dari produk Kupat Tahu"],
-    ["Laba Kotor Kupat Tahu", kupatTahuFinance.gross, "40% dari omset Kupat Tahu"],
-    ["Gaji Kupat Tahu", kupatTahuFinance.gaji, "Pengurang pendapatan dan cash"],
-    ["QRIS Kupat Tahu", kupatTahuFinance.qris, "Pengurang cash Kupat Tahu"],
-    ["Pendapatan Bersih Kupat Tahu", kupatTahuFinance.net, "Laba kotor dikurangi gaji dan lain lain"],
-    ["Biaya Lain Lain Transaksi", finance.otherCost, "Pengurang laba dari transaksi"],
-    ["Parameter Biaya Bulanan", totalMonthlyCost, "Pengurang laba bulanan"],
-    ["Pendapatan Tambahan", totalAdditionalIncome, "Penambah laba bersih"]
-  ];
-  const net =
-    finance.omset -
-    finance.modal -
-    finance.gaji -
-    finance.otherCost -
-    totalMonthlyCost +
-    totalAdditionalIncome;
-  const ownerCash =
-    finance.omset -
-    finance.grabGofood -
-    finance.qris -
-    finance.gaji -
-    finance.otherCost;
-
-  const totalDeductions =
-    finance.modal + finance.gaji + finance.otherCost + totalMonthlyCost;
+  const totalSalesNet = kebabNet + kupatTahuFinance.net;
+  const totalCash = kebabCash + kupatCash;
+  const expenseTransactionTotal = expenseReports.reduce(
+    (sum, report) => sum + report.total,
+    0
+  );
+  const monthlyCostRows = monthlyCostParameters.map((item) => ({
+    label: item.name,
+    value: monthlyCostValues[item.key] ?? item.amount
+  }));
+  const operationalCostRows = expenseTransactionTotal
+    ? [
+        ...monthlyCostRows,
+        {
+          label: "BIAYA LAIN LAIN TRANSAKSI",
+          value: expenseTransactionTotal
+        }
+      ]
+    : monthlyCostRows;
+  const operationalCostTotal =
+    totalMonthlyCost + expenseTransactionTotal;
+  const brilinkIncome =
+    additionalIncomeValues.brilink ?? totalAdditionalIncome;
+  const yudhistiraNet = totalSalesNet - operationalCostTotal;
+  const finalNet = yudhistiraNet + brilinkIncome;
 
   return (
     <div className="space-y-6">
-      <Card className="overflow-hidden border-amber-300 bg-[linear-gradient(135deg,#fffbeb_0%,#fef3c7_52%,#ffffff_100%)]">
-        <CardContent className="p-5">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <Badge variant="warning">Neraca Keuangan</Badge>
-              <h2 className="mt-3 text-3xl font-black tracking-normal text-amber-950">
-                {formatCurrency(net)}
-              </h2>
-              <p className="mt-1 text-sm font-medium text-amber-800">
-                Laba bersih periode {selectedMonth}
-              </p>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2 lg:min-w-[420px]">
-              <div className="rounded-lg border border-amber-200 bg-white/80 p-4">
-                <p className="text-xs font-bold uppercase tracking-normal text-amber-800">
-                  Cash Owner
-                </p>
-                <p className="mt-2 text-xl font-black text-amber-950">
-                  {formatCurrency(ownerCash)}
-                </p>
-              </div>
-              <div className="rounded-lg border border-emerald-200 bg-white/80 p-4">
-                <p className="text-xs font-bold uppercase tracking-normal text-emerald-700">
-                  Laba Kotor
-                </p>
-                <p className="mt-2 text-xl font-black text-emerald-700">
-                  {formatCurrency(gross)}
-                </p>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <FinancialMetricCard
-          icon={Store}
-          label="Total Omset"
-          note="Akumulasi nilai penjualan semua kios"
-          value={formatCurrency(finance.omset)}
-        />
-        <FinancialMetricCard
-          icon={Archive}
-          label="Modal"
-          note="Modal bahan baku yang menjadi pengurang laba"
-          tone="rose"
-          value={formatCurrency(finance.modal)}
-        />
-        <FinancialMetricCard
-          icon={ReceiptText}
-          label="Total Pengurang"
-          note="Modal, gaji, biaya transaksi, dan parameter bulanan"
-          tone="rose"
-          value={formatCurrency(totalDeductions)}
-        />
-        <FinancialMetricCard
-          icon={DollarSign}
-          label="Laba Bersih"
-          note="Hasil akhir setelah biaya dan pendapatan tambahan"
-          tone="emerald"
-          value={formatCurrency(net)}
-        />
-      </div>
-
-      <Card>
+      <Card className="border-amber-300 bg-amber-50/70">
         <CardHeader className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <CardTitle>Neraca Keuangan Bulanan</CardTitle>
+          <div>
+            <CardTitle>Neraca Keuangan Bulanan</CardTitle>
+            <CardDescription>
+              Format ringkas penjualan, biaya, dan laba bersih periode {selectedMonth}.
+            </CardDescription>
+          </div>
           <div className="flex flex-col gap-2 sm:flex-row">
             <Select
               className="w-full sm:w-[180px]"
@@ -3707,41 +3669,145 @@ function FinanceView({
             </Button>
           </div>
         </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Komponen</TableHead>
-                <TableHead>Nominal</TableHead>
-                <TableHead>Keterangan</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map(([label, value, note]) => (
-                <TableRow key={label}>
-                  <TableCell className="font-medium">{label}</TableCell>
-                  <TableCell className="font-bold">{formatCurrency(Number(value))}</TableCell>
-                  <TableCell>{note}</TableCell>
-                </TableRow>
-              ))}
-              <TableRow className="bg-amber-100/70">
-                <TableCell className="font-bold">Cash Diterima Owner</TableCell>
-                <TableCell className="font-black text-amber-800">
-                  {formatCurrency(ownerCash)}
-                </TableCell>
-                <TableCell>Omset dikurangi Grab/GoFood, QRIS, gaji, dan lain lain</TableCell>
-              </TableRow>
-              <TableRow className="bg-emerald-50">
-                <TableCell className="font-bold">Laba Bersih Bulan Ini</TableCell>
-                <TableCell className="font-black text-emerald-700">
-                  {formatCurrency(net)}
-                </TableCell>
-                <TableCell>Terhitung otomatis</TableCell>
-              </TableRow>
-            </TableBody>
-          </Table>
+        <CardContent className="space-y-8">
+          <div className="grid gap-6 xl:grid-cols-2">
+            <FinanceSheetTable
+              rows={[
+                { label: "OMSET", value: kebabFinance.omset },
+                { label: "GRAB/QRIS", value: kebabFinance.grabGofood + kebabFinance.qris },
+                { label: "GAJI", value: kebabFinance.gaji },
+                { label: "LAIN LAIN", value: kebabFinance.otherCost },
+                { label: "CASH", value: kebabCash },
+                { highlight: true, label: "PENJUALAN BERSIH", value: kebabNet },
+                { label: "MODAL TERJUAL", value: kebabFinance.modal }
+              ]}
+              title="KEBAB"
+            />
+            <FinanceSheetTable
+              rows={[
+                { label: "OMSET", value: kupatTahuFinance.omset },
+                { label: "GRAB/QRIS", value: kupatTahuFinance.qris },
+                { label: "GAJI", value: kupatTahuFinance.gaji },
+                { label: "LAIN LAIN", value: kupatTahuFinance.otherCost },
+                { label: "CASH", value: kupatCash },
+                { highlight: true, label: "PENJUALAN BERSIH", value: kupatTahuFinance.net },
+                { label: "MODAL TERJUAL", value: kupatTahuFinance.modal }
+              ]}
+              title="KUPAT"
+            />
+          </div>
+
+          <div className="grid gap-6 xl:grid-cols-[1fr_1.1fr_1.15fr]">
+            <FinanceSheetTable
+              rows={[
+                { label: "OMSET", value: finance.omset },
+                { label: "GRAB/QRIS", value: finance.grabGofood + finance.qris },
+                { label: "GAJI", value: finance.gaji },
+                { label: "LAIN LAIN", value: finance.otherCost },
+                { label: "CASH", value: totalCash },
+                { highlight: true, label: "PENJUALAN BERSIH", value: totalSalesNet },
+                { label: "MODAL TERJUAL", value: finance.modal }
+              ]}
+              title="TOTAL PENJUALAN"
+            />
+
+            <FinanceSheetTable
+              footerLabel="TOTAL BIAYA"
+              footerValue={operationalCostTotal}
+              rows={operationalCostRows}
+              title="BIAYA BIAYA"
+            />
+
+            <div className="space-y-5">
+              <FinanceSheetTable
+                rows={[
+                  { highlight: true, label: "LABA KOTOR", value: totalSalesNet },
+                  { label: "BIAYA - BIAYA", value: operationalCostTotal }
+                ]}
+                title="NERACA"
+              />
+              <FinanceSheetTable
+                rows={[
+                  { label: "LABA BERSIH YUDHISTIRA", strong: true, value: yudhistiraNet }
+                ]}
+              />
+              <FinanceSheetTable
+                rows={[
+                  { label: "BRILINK (PENDAPATAN TAMBAHAN)", value: brilinkIncome }
+                ]}
+              />
+              <FinanceSheetTable
+                rows={[
+                  { highlight: true, label: "LABA BERSIH", strong: true, value: finalNet }
+                ]}
+              />
+            </div>
+          </div>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+function FinanceSheetTable({
+  footerLabel,
+  footerValue,
+  rows,
+  title
+}: {
+  footerLabel?: string;
+  footerValue?: number;
+  rows: Array<{
+    highlight?: boolean;
+    label: string;
+    strong?: boolean;
+    value: number;
+  }>;
+  title?: string;
+}) {
+  return (
+    <div className="overflow-hidden rounded-sm border border-amber-900 bg-white shadow-sm">
+      {title ? (
+        <div className="bg-amber-950 px-3 py-1.5 text-center text-xs font-black uppercase tracking-normal text-amber-50">
+          {title}
+        </div>
+      ) : null}
+      <table className="w-full border-collapse text-sm">
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.label}>
+              <td
+                className={`border border-amber-900 px-2 py-1.5 text-center font-semibold uppercase ${
+                  row.strong ? "font-black" : ""
+                }`}
+              >
+                {row.label}
+              </td>
+              <td
+                className={`min-w-[110px] border border-amber-900 px-2 py-1.5 text-right font-bold ${
+                  row.highlight
+                    ? "bg-emerald-700 text-white"
+                    : row.strong
+                      ? "bg-amber-950 text-amber-50"
+                      : "bg-amber-50/40 text-amber-950"
+                }`}
+              >
+                {formatNumber(row.value)}
+              </td>
+            </tr>
+          ))}
+          {footerLabel ? (
+            <tr>
+              <td className="border border-amber-900 bg-amber-950 px-2 py-1.5 text-center font-black uppercase text-amber-50">
+                {footerLabel}
+              </td>
+              <td className="border border-amber-900 bg-amber-600 px-2 py-1.5 text-right font-black text-white">
+                {formatNumber(footerValue ?? 0)}
+              </td>
+            </tr>
+          ) : null}
+        </tbody>
+      </table>
     </div>
   );
 }
