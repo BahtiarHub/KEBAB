@@ -2268,6 +2268,13 @@ function PurchaseView({
       total + (purchaseQty[item.code] ?? 0) * (purchasePrices[item.code] ?? item.buy),
     0
   );
+  const purchaseItemCount = materials.filter(
+    (item) => (purchaseQty[item.code] ?? 0) > 0
+  ).length;
+  const purchaseTotalQty = materials.reduce(
+    (total, item) => total + (purchaseQty[item.code] ?? 0),
+    0
+  );
 
   function togglePurchasePriceEdit(code: string) {
     setEditablePurchasePrices((current) => ({
@@ -2423,7 +2430,15 @@ function PurchaseView({
           </Field>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-5">
+          <SummaryTile
+            label="Item diisi"
+            value={`${formatNumber(purchaseItemCount)} item`}
+          />
+          <SummaryTile
+            label="Total Qty"
+            value={formatNumber(purchaseTotalQty)}
+          />
           <SummaryTile label="Subtotal bahan" value={formatCurrency(subtotal)} />
           <SummaryTile label="Ongkir" value={formatCurrency(shippingCost)} />
           <SummaryTile
@@ -2461,6 +2476,13 @@ function DistributionView({
   const [distributionQty, setDistributionQty] = useState<NumberMap>({});
   const [distributionOfficer, setDistributionOfficer] = useState("Admin");
   const [saveStatus, setSaveStatus] = useState("");
+  const distributionItemCount = materials.filter(
+    (item) => (distributionQty[item.code] ?? 0) > 0
+  ).length;
+  const distributionTotalQty = materials.reduce(
+    (total, item) => total + (distributionQty[item.code] ?? 0),
+    0
+  );
 
   async function saveDistribution() {
     setSaveStatus("Menyimpan distribusi ke database...");
@@ -2537,6 +2559,17 @@ function DistributionView({
               onChange={(event) => setDistributionOfficer(event.target.value)}
             />
           </Field>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <SummaryTile
+            label="Item diproses"
+            value={`${formatNumber(distributionItemCount)} item`}
+          />
+          <SummaryTile
+            label="Total Qty Distribusi"
+            value={formatNumber(distributionTotalQty)}
+          />
         </div>
 
         <Table>
