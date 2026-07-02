@@ -694,6 +694,53 @@ function getTodayInputDate() {
   return new Date().toLocaleDateString("en-CA");
 }
 
+function TransactionDateGate({
+  date,
+  onConfirm,
+  title
+}: {
+  date: string;
+  onConfirm: (date: string) => void;
+  title: string;
+}) {
+  const [draftDate, setDraftDate] = useState(getTodayInputDate);
+
+  if (date) {
+    return null;
+  }
+
+  return (
+    <div className="fixed inset-0 z-[80] grid place-items-center bg-amber-950/40 px-4 backdrop-blur-sm">
+      <Card className="w-full max-w-md border-amber-300 bg-white shadow-2xl">
+        <CardHeader>
+          <CardTitle>{title}</CardTitle>
+          <CardDescription>
+            Pilih tanggal pengisian terlebih dahulu sebelum melakukan transaksi.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Field label="Tanggal Transaksi">
+            <Input
+              autoFocus
+              type="date"
+              value={draftDate}
+              onChange={(event) => setDraftDate(event.target.value)}
+            />
+          </Field>
+          <Button
+            className="w-full"
+            disabled={!draftDate}
+            onClick={() => onConfirm(draftDate)}
+          >
+            <Check />
+            Gunakan Tanggal
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 const monthOptions = [
   "Januari 2026",
   "Februari 2026",
@@ -1975,7 +2022,7 @@ function SalesView({
     ciherang: { grabGofood: 0, otherCost: 0, qris: 0, salary: 0 },
     wadas: { grabGofood: 0, otherCost: 0, qris: 0, salary: 0 }
   });
-  const [salesDate, setSalesDate] = useState(getTodayInputDate);
+  const [salesDate, setSalesDate] = useState("");
 
   const saleQty = saleQtyByKiosk[selectedKiosk];
   const salesCosts = salesCostsByKiosk[selectedKiosk];
@@ -2058,11 +2105,17 @@ function SalesView({
 
     const result = (await response.json()) as { number: string };
     setSaveStatus(`Penjualan tersimpan ke backend dengan nomor ${result.number}.`);
+    setSalesDate("");
     await onSaved();
   }
 
   return (
     <>
+      <TransactionDateGate
+        date={salesDate}
+        onConfirm={setSalesDate}
+        title="Tanggal Penjualan Kios"
+      />
       <Card>
         <CardHeader>
           <CardTitle>Input Penjualan Kios</CardTitle>
@@ -2201,7 +2254,7 @@ function PurchaseView({
   const [editablePurchasePrices, setEditablePurchasePrices] = useState<
     Record<string, boolean>
   >({});
-  const [purchaseDate, setPurchaseDate] = useState(getTodayInputDate);
+  const [purchaseDate, setPurchaseDate] = useState("");
   const [purchaseNote, setPurchaseNote] = useState("Belanja bahan baku");
   const [purchaseOfficer, setPurchaseOfficer] = useState("Operator Gudang");
   const [shippingCost, setShippingCost] = useState(0);
@@ -2245,10 +2298,17 @@ function PurchaseView({
 
     const result = (await response.json()) as { number: string };
     setSaveStatus(`Belanja tersimpan ke backend dengan nomor ${result.number}.`);
+    setPurchaseDate("");
     await onSaved();
   }
 
   return (
+    <>
+    <TransactionDateGate
+      date={purchaseDate}
+      onConfirm={setPurchaseDate}
+      title="Tanggal Belanja Bahan Baku"
+    />
     <Card>
       <CardHeader className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <CardTitle>Belanja Bahan Baku</CardTitle>
@@ -2381,6 +2441,7 @@ function PurchaseView({
         </Button>
       </CardContent>
     </Card>
+    </>
   );
 }
 
@@ -2392,7 +2453,7 @@ function DistributionView({
   onSaved: () => Promise<void>;
 }) {
   const [destination, setDestination] = useState<KioskKey>("wadas");
-  const [distributionDate, setDistributionDate] = useState(getTodayInputDate);
+  const [distributionDate, setDistributionDate] = useState("");
   const [distributionQty, setDistributionQty] = useState<NumberMap>({});
   const [distributionOfficer, setDistributionOfficer] = useState("Admin");
   const [saveStatus, setSaveStatus] = useState("");
@@ -2425,13 +2486,19 @@ function DistributionView({
     const result = (await response.json()) as { number: string };
     setSaveStatus(`Distribusi tersimpan ke backend dengan nomor ${result.number}.`);
     setDestination("wadas");
-    setDistributionDate(getTodayInputDate());
+    setDistributionDate("");
     setDistributionOfficer("");
     setDistributionQty({});
     await onSaved();
   }
 
   return (
+    <>
+    <TransactionDateGate
+      date={distributionDate}
+      onConfirm={setDistributionDate}
+      title="Tanggal Distribusi"
+    />
     <Card>
       <CardHeader>
         <CardTitle>Distribusi Gudang ke Kios</CardTitle>
@@ -2526,11 +2593,12 @@ function DistributionView({
         </Button>
       </CardContent>
     </Card>
+    </>
   );
 }
 
 function ExpenseView({ onSaved }: { onSaved: () => Promise<void> }) {
-  const [expenseDate, setExpenseDate] = useState(getTodayInputDate);
+  const [expenseDate, setExpenseDate] = useState("");
   const [expenseAmount, setExpenseAmount] = useState(0);
   const [expenseKind, setExpenseKind] = useState("Bensin");
   const [expenseLocation, setExpenseLocation] = useState("Umum");
@@ -2557,10 +2625,17 @@ function ExpenseView({ onSaved }: { onSaved: () => Promise<void> }) {
 
     const result = (await response.json()) as { number: string };
     setSaveStatus(`Biaya tersimpan ke backend dengan nomor ${result.number}.`);
+    setExpenseDate("");
     await onSaved();
   }
 
   return (
+    <>
+    <TransactionDateGate
+      date={expenseDate}
+      onConfirm={setExpenseDate}
+      title="Tanggal Biaya Lain lain"
+    />
     <Card>
       <CardHeader>
         <CardTitle>Biaya Lain lain</CardTitle>
@@ -2644,11 +2719,12 @@ function ExpenseView({ onSaved }: { onSaved: () => Promise<void> }) {
         </Button>
       </CardContent>
     </Card>
+    </>
   );
 }
 
 function KupatTahuPurchaseView({ onSaved }: { onSaved: () => Promise<void> }) {
-  const [purchaseDate, setPurchaseDate] = useState(getTodayInputDate);
+  const [purchaseDate, setPurchaseDate] = useState("");
   const [amount, setAmount] = useState(0);
   const [note, setNote] = useState("Belanja Kupat Tahu");
   const [saveStatus, setSaveStatus] = useState("");
@@ -2675,11 +2751,17 @@ function KupatTahuPurchaseView({ onSaved }: { onSaved: () => Promise<void> }) {
     setSaveStatus(`Belanja Kupat Tahu tersimpan dengan nomor ${result.number}.`);
     setAmount(0);
     setNote("Belanja Kupat Tahu");
-    setPurchaseDate(getTodayInputDate());
+    setPurchaseDate("");
     await onSaved();
   }
 
   return (
+    <>
+    <TransactionDateGate
+      date={purchaseDate}
+      onConfirm={setPurchaseDate}
+      title="Tanggal Belanja Kupat Tahu"
+    />
     <Card>
       <CardHeader>
         <CardTitle>Belanja Kupat Tahu</CardTitle>
@@ -2718,11 +2800,12 @@ function KupatTahuPurchaseView({ onSaved }: { onSaved: () => Promise<void> }) {
         </Button>
       </CardContent>
     </Card>
+    </>
   );
 }
 
 function KupatTahuSalesView({ onSaved }: { onSaved: () => Promise<void> }) {
-  const [salesDate, setSalesDate] = useState(getTodayInputDate);
+  const [salesDate, setSalesDate] = useState("");
   const [portionQty, setPortionQty] = useState(0);
   const [salary, setSalary] = useState(0);
   const [qris, setQris] = useState(0);
@@ -2764,11 +2847,17 @@ function KupatTahuSalesView({ onSaved }: { onSaved: () => Promise<void> }) {
     setQris(0);
     setOtherCost(0);
     setNote("Penjualan Kupat Tahu");
-    setSalesDate(getTodayInputDate());
+    setSalesDate("");
     await onSaved();
   }
 
   return (
+    <>
+    <TransactionDateGate
+      date={salesDate}
+      onConfirm={setSalesDate}
+      title="Tanggal Penjualan Kupat Tahu"
+    />
     <Card>
       <CardHeader>
         <CardTitle>Penjualan Kupat Tahu</CardTitle>
@@ -2823,6 +2912,7 @@ function KupatTahuSalesView({ onSaved }: { onSaved: () => Promise<void> }) {
         </Button>
       </CardContent>
     </Card>
+    </>
   );
 }
 
@@ -3949,6 +4039,20 @@ function getDayLabel(date: string) {
   return firstPart ? String(Number(firstPart)) : date;
 }
 
+function ReportEditButton({ label }: { label: string }) {
+  return (
+    <Button
+      aria-label={`Edit ${label}`}
+      size="icon"
+      title={`Edit ${label}`}
+      type="button"
+      variant="outline"
+    >
+      <Pencil />
+    </Button>
+  );
+}
+
 function AllSalesDailyReport({ reports }: { reports?: TransactionReportRow[] }) {
   const sourceRows = useMemo(() => {
     if (reports === undefined) {
@@ -4049,6 +4153,7 @@ function AllSalesDailyReport({ reports }: { reports?: TransactionReportRow[] }) 
               <TableHead>Lain lain</TableHead>
               <TableHead>Penjualan Bersih</TableHead>
               <TableHead>Cash</TableHead>
+              <TableHead>Aksi</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -4056,7 +4161,7 @@ function AllSalesDailyReport({ reports }: { reports?: TransactionReportRow[] }) 
               <TableRow>
                 <TableCell
                   className="py-8 text-center text-sm font-medium text-muted-foreground"
-                  colSpan={8}
+                  colSpan={9}
                 >
                   Belum ada data penjualan di Turso untuk periode ini.
                 </TableCell>
@@ -4079,6 +4184,9 @@ function AllSalesDailyReport({ reports }: { reports?: TransactionReportRow[] }) 
                   </TableCell>
                   <TableCell className="font-bold text-amber-800">
                     {formatCurrencyDash(cash)}
+                  </TableCell>
+                  <TableCell>
+                    <ReportEditButton label={`semua penjualan ${row.date}`} />
                   </TableCell>
                 </TableRow>
               );
@@ -4107,6 +4215,7 @@ function AllSalesDailyReport({ reports }: { reports?: TransactionReportRow[] }) 
                 <TableCell className="font-black text-amber-800">
                   {formatCurrencyDash(summary.cash)}
                 </TableCell>
+                <TableCell />
               </TableRow>
             ) : null}
           </TableBody>
@@ -4252,6 +4361,7 @@ function SalesReport({
                 <TableHead>Lain lain</TableHead>
                 <TableHead>Cash Owner</TableHead>
                 <TableHead>Laba Bersih</TableHead>
+                <TableHead>Aksi</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -4259,7 +4369,7 @@ function SalesReport({
                 <TableRow>
                   <TableCell
                     className="py-8 text-center text-sm font-medium text-muted-foreground"
-                    colSpan={activeTab === "Total Penjualan" ? 12 : 11}
+                    colSpan={activeTab === "Total Penjualan" ? 13 : 12}
                   >
                     Belum ada data penjualan di Turso untuk periode ini.
                   </TableCell>
@@ -4291,6 +4401,9 @@ function SalesReport({
                     </TableCell>
                     <TableCell className="font-bold text-emerald-700">
                       {formatCurrency(net)}
+                    </TableCell>
+                    <TableCell>
+                      <ReportEditButton label={`${row.location} ${row.date}`} />
                     </TableCell>
                   </TableRow>
                 );
@@ -4444,6 +4557,7 @@ function StockOpnameReport({ rows: backendRows }: { rows?: StockOpnameReportRow[
               <TableHead>Stok Fisik</TableHead>
               <TableHead>Selisih</TableHead>
               <TableHead>Petugas</TableHead>
+              <TableHead>Aksi</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -4451,7 +4565,7 @@ function StockOpnameReport({ rows: backendRows }: { rows?: StockOpnameReportRow[
               <TableRow>
                 <TableCell
                   className="py-8 text-center text-sm font-medium text-muted-foreground"
-                  colSpan={8}
+                  colSpan={9}
                 >
                   Belum ada data opname stok di Turso untuk periode ini.
                 </TableCell>
@@ -4478,6 +4592,9 @@ function StockOpnameReport({ rows: backendRows }: { rows?: StockOpnameReportRow[
                   {formatNumber(row.difference)}
                 </TableCell>
                 <TableCell>{row.officer}</TableCell>
+                <TableCell>
+                  <ReportEditButton label={`opname ${row.number}`} />
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -4604,6 +4721,7 @@ function SimpleReport({
                       >
                         Detail
                       </Button>
+                      <ReportEditButton label={row.number} />
                     </div>
                   </TableCell>
                 </TableRow>
