@@ -1,4 +1,5 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
+import { hashPassword } from "better-auth/crypto";
 import { NextResponse } from "next/server";
 
 import { db, ensureDatabase } from "@/db";
@@ -49,6 +50,7 @@ export async function PATCH(request: Request) {
   const body = (await request.json()) as {
     id?: string;
     name?: string;
+    password?: string;
     resetPassword?: boolean;
     role?: "Admin" | "Operator";
   };
@@ -75,8 +77,20 @@ export async function PATCH(request: Request) {
     });
   }
 
-  if (!body.role && !body.name) {
-    return NextResponse.json({ error: "Name or role is required" }, { status: 400 });
+  const nextPassword = body.password?.trim();
+
+  if (!body.role && !body.name && !nextPassword) {
+    return NextResponse.json(
+      { error: "Name, role, or password is required" },
+      { status: 400 }
+    );
+  }
+
+  if (nextPassword && nextPassword.length < 8) {
+    return NextResponse.json(
+      { error: "Password minimal 8 karakter" },
+      { status: 400 }
+    );
   }
 
   if (
@@ -106,6 +120,19 @@ export async function PATCH(request: Request) {
     .set(updates)
     .where(eq(schema.user.id, body.id))
     .run();
+
+  if (nextPassword) {
+    const hashedPassword = await hashPassword(nextPassword);
+    await db.update(schema.account)
+      .set({ password: hashedPassword, updatedAt: new Date() })
+      .where(
+        and(
+          eq(schema.account.userId, body.id),
+          eq(schema.account.providerId, "credential")
+        )
+      )
+      .run();
+  }
 
   return NextResponse.json({ ok: true });
 }

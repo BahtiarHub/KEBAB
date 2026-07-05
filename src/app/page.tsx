@@ -3222,7 +3222,9 @@ function MaintenanceUserView({
   users?: BackendBootstrap["users"];
 }) {
   const [editingUserId, setEditingUserId] = useState("");
-  const [editDraft, setEditDraft] = useState<Record<string, { name: string; role: UserRole }>>({});
+  const [editDraft, setEditDraft] = useState<
+    Record<string, { name: string; password: string; role: UserRole }>
+  >({});
   const [newUser, setNewUser] = useState({
     name: "",
     password: "operator123",
@@ -3279,6 +3281,7 @@ function MaintenanceUserView({
       ...current,
       [user.id]: {
         name: user.name,
+        password: "",
         role: user.role
       }
     }));
@@ -3297,6 +3300,7 @@ function MaintenanceUserView({
       body: JSON.stringify({
         id: userId,
         name: draft.name.trim(),
+        password: draft.password.trim() || undefined,
         role: draft.role
       }),
       headers: { "Content-Type": "application/json" },
@@ -3435,6 +3439,7 @@ function MaintenanceUserView({
             <TableHeader>
               <TableRow>
                 <TableHead>Username</TableHead>
+                <TableHead>Password Baru</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Aksi</TableHead>
@@ -3453,6 +3458,7 @@ function MaintenanceUserView({
                             ...current,
                             [user.id]: {
                               name: event.target.value,
+                              password: current[user.id]?.password ?? "",
                               role: current[user.id]?.role ?? user.role
                             }
                           }))
@@ -3460,6 +3466,28 @@ function MaintenanceUserView({
                       />
                     ) : (
                       user.username
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {editingUserId === user.id ? (
+                      <Input
+                        className="min-w-[180px]"
+                        placeholder="Isi jika ingin ganti"
+                        type="password"
+                        value={editDraft[user.id]?.password ?? ""}
+                        onChange={(event) =>
+                          setEditDraft((current) => ({
+                            ...current,
+                            [user.id]: {
+                              name: current[user.id]?.name ?? user.name,
+                              password: event.target.value,
+                              role: current[user.id]?.role ?? user.role
+                            }
+                          }))
+                        }
+                      />
+                    ) : (
+                      <span className="text-muted-foreground">••••••••</span>
                     )}
                   </TableCell>
                   <TableCell>
@@ -3473,6 +3501,7 @@ function MaintenanceUserView({
                             ...current,
                             [user.id]: {
                               name: current[user.id]?.name ?? user.name,
+                              password: current[user.id]?.password ?? "",
                               role: event.target.value as UserRole
                             }
                           }))
