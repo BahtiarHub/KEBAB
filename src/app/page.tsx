@@ -885,14 +885,15 @@ async function downloadExport(type: string) {
     return;
   }
 
-  const payload = await response.json();
-  const blob = new Blob([JSON.stringify(payload, null, 2)], {
-    type: "application/json"
-  });
+  const blob = await response.blob();
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const filenameMatch = disposition.match(/filename="?([^"]+)"?/i);
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `${type.toLowerCase().replace(/\s+/g, "-")}-${Date.now()}.json`;
+  link.download =
+    filenameMatch?.[1] ??
+    `${type.toLowerCase().replace(/\s+/g, "-")}-${Date.now()}.xls`;
   link.click();
   URL.revokeObjectURL(url);
 }
@@ -3725,10 +3726,10 @@ function FinanceView({
                 <option key={month}>{month}</option>
               ))}
             </Select>
-            <Button onClick={() => downloadExport("neraca")}>
-              <Download />
-              Export Neraca
-            </Button>
+          <Button onClick={() => downloadExport("neraca")}>
+            <Download />
+            Export Excel
+          </Button>
           </div>
         </CardHeader>
         <CardContent className="space-y-8">
@@ -4246,7 +4247,7 @@ function AllSalesDailyReport({ reports }: { reports?: TransactionReportRow[] }) 
           </Select>
           <Button onClick={() => downloadExport("semua-penjualan")}>
             <Download />
-            Export
+            Export Excel
           </Button>
         </div>
       </CardHeader>
@@ -4266,11 +4267,11 @@ function AllSalesDailyReport({ reports }: { reports?: TransactionReportRow[] }) 
               <TableHead>Grab</TableHead>
               <TableHead>Gaji</TableHead>
               <TableHead>Modal</TableHead>
-              <TableHead>Lain lain</TableHead>
-              <TableHead>Penjualan Bersih</TableHead>
-              <TableHead>Cash</TableHead>
-            </TableRow>
-          </TableHeader>
+                <TableHead>Lain lain</TableHead>
+                <TableHead>Penjualan Bersih</TableHead>
+                <TableHead>Cash</TableHead>
+              </TableRow>
+            </TableHeader>
           <TableBody>
             {rows.length === 0 ? (
               <TableRow>
@@ -4368,7 +4369,17 @@ function SalesReport({
   const [selectedMonth, setSelectedMonth] = useState(() =>
     getDefaultReportMonth(sourceRows)
   );
+  const [selectedSalesDetailKey, setSelectedSalesDetailKey] = useState("");
   const reportMonths = useMemo(() => getAvailableMonths(sourceRows), [sourceRows]);
+  const rawSalesReports = useMemo(
+    () =>
+      reports?.filter((report) =>
+        mode === "kupatTahu"
+          ? report.type === "Kupat Tahu Penjualan"
+          : report.type === "Penjualan"
+      ) ?? [],
+    [mode, reports]
+  );
   useEffect(() => {
     const options = reportMonths.length ? reportMonths : monthOptions;
     const nextMonth = getDefaultReportMonth(sourceRows);
@@ -4381,6 +4392,24 @@ function SalesReport({
       : monthRows.filter(
           (row) => row.location === activeTab
         );
+  useEffect(() => {
+    setSelectedSalesDetailKey((current) =>
+      rows.some((row) => salesDetailKey(row, activeTab) === current) ? current : ""
+    );
+  }, [activeTab, rows]);
+  const selectedSalesRow = rows.find(
+    (row) => salesDetailKey(row, activeTab) === selectedSalesDetailKey
+  );
+  const monthRawSalesReports = filterByMonth(rawSalesReports, selectedMonth);
+  const selectedSalesTransactions = selectedSalesRow
+    ? monthRawSalesReports.filter((report) => {
+        const sameDate = report.date === selectedSalesRow.date;
+        const sameLocation =
+          activeTab === "Total Penjualan" || report.location === selectedSalesRow.location;
+
+        return sameDate && sameLocation;
+      })
+    : [];
   const summary = rows.reduce(
     (total, row) => ({
       cash:
@@ -4428,7 +4457,7 @@ function SalesReport({
               }
             >
               <Download />
-              Export
+              Export Excel
             </Button>
           </div>
         </CardHeader>
@@ -4472,6 +4501,7 @@ function SalesReport({
                 <TableHead>Lain lain</TableHead>
                 <TableHead>Cash Owner</TableHead>
                 <TableHead>Laba Bersih</TableHead>
+                <TableHead>Aksi</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -4479,7 +4509,7 @@ function SalesReport({
                 <TableRow>
                   <TableCell
                     className="py-8 text-center text-sm font-medium text-muted-foreground"
-                    colSpan={activeTab === "Total Penjualan" ? 12 : 11}
+                    colSpan={activeTab === "Total Penjualan" ? 13 : 12}
                   >
                     Belum ada data penjualan di Turso untuk periode ini.
                   </TableCell>
@@ -4512,11 +4542,109 @@ function SalesReport({
                     <TableCell className="font-bold text-emerald-700">
                       {formatCurrency(net)}
                     </TableCell>
+                    <TableCell>
+                      <Button
+                        size="sm"
+                        variant={
+                          selectedSalesDetailKey === salesDetailKey(row, activeTab)
+                            ? "default"
+                            : "outline"
+                        }
+                        onClick={() =>
+                          setSelectedSalesDetailKey(salesDetailKey(row, activeTab))
+                        }
+                      >
+                        Detail
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 );
               })}
             </TableBody>
           </Table>
+
+          {selectedSalesRow ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>
+                  Detail Penjualan {selectedSalesRow.date}
+                  {activeTab === "Total Penjualan"
+                    ? ""
+                    : ` - ${selectedSalesRow.location}`}
+                </CardTitle>
+                <CardDescription>
+                  Rincian input transaksi pada tanggal yang dipilih.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Nomor</TableHead>
+                      <TableHead>Lokasi</TableHead>
+                      <TableHead>Keterangan</TableHead>
+                      <TableHead>Total</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {selectedSalesTransactions.length === 0 ? (
+                      <TableRow>
+                        <TableCell
+                          className="py-6 text-center text-sm font-medium text-muted-foreground"
+                          colSpan={4}
+                        >
+                          Detail transaksi tidak tersedia untuk data contoh.
+                        </TableCell>
+                      </TableRow>
+                    ) : null}
+                    {selectedSalesTransactions.map((transaction) => (
+                      <TableRow key={transaction.number}>
+                        <TableCell className="font-medium">{transaction.number}</TableCell>
+                        <TableCell>{transaction.location}</TableCell>
+                        <TableCell>{transaction.note}</TableCell>
+                        <TableCell>{formatCurrency(transaction.total)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+
+                {selectedSalesTransactions.map((transaction) => (
+                  <div
+                    key={`${transaction.number}-detail`}
+                    className="rounded-md border border-amber-200"
+                  >
+                    <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-950">
+                      Rincian Input {transaction.number}
+                    </div>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Item</TableHead>
+                          <TableHead>Jumlah</TableHead>
+                          <TableHead>Harga/Nominal</TableHead>
+                          <TableHead>Total</TableHead>
+                          <TableHead>Aktivitas</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {transaction.details.map((detail) => (
+                          <TableRow key={`${transaction.number}-${detail.item}`}>
+                            <TableCell className="font-medium">{detail.item}</TableCell>
+                            <TableCell>{formatNumber(detail.qty)}</TableCell>
+                            <TableCell>{formatCurrency(detail.price)}</TableCell>
+                            <TableCell>
+                              {formatCurrency(detail.qty * detail.price)}
+                            </TableCell>
+                            <TableCell>{detail.activity}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          ) : null}
         </CardContent>
       </Card>
     </div>
@@ -4552,6 +4680,10 @@ function aggregateDailySales(rows: DailySalesReportRow[]): DailySalesReportRow[]
   }, {});
 
   return Object.values(grouped);
+}
+
+function salesDetailKey(row: DailySalesReportRow, activeTab: string) {
+  return `${row.date}-${activeTab === "Total Penjualan" ? "total" : row.location}`;
 }
 
 function sumDetailsByItem(report: TransactionReportRow, itemName: string) {
@@ -4639,7 +4771,7 @@ function StockOpnameReport({ rows: backendRows }: { rows?: StockOpnameReportRow[
           </Select>
           <Button onClick={() => downloadExport("opname-stok")}>
             <Download />
-            Export
+            Export Excel
           </Button>
         </div>
       </CardHeader>
@@ -4726,14 +4858,31 @@ function SimpleReport({
   const [selectedMonth, setSelectedMonth] = useState(() =>
     getDefaultReportMonth(sourceRows)
   );
+  const [selectedDate, setSelectedDate] = useState("Semua Tanggal");
   const reportMonths = useMemo(() => getAvailableMonths(sourceRows), [sourceRows]);
-  const rows = filterByMonth(sourceRows, selectedMonth);
+  const monthRows = filterByMonth(sourceRows, selectedMonth);
+  const enableDateFilter = type === "Belanja" || type === "Distribusi";
+  const dateOptions = useMemo(
+    () => Array.from(new Set(monthRows.map((row) => row.date))),
+    [monthRows]
+  );
+  const rows =
+    enableDateFilter && selectedDate !== "Semua Tanggal"
+      ? monthRows.filter((row) => row.date === selectedDate)
+      : monthRows;
   const [selectedNumber, setSelectedNumber] = useState(rows[0]?.number ?? "");
   useEffect(() => {
     const options = reportMonths.length ? reportMonths : monthOptions;
     const nextMonth = getDefaultReportMonth(sourceRows);
     setSelectedMonth((current) => (options.includes(current) ? current : nextMonth));
   }, [reportMonths, sourceRows]);
+  useEffect(() => {
+    setSelectedDate((current) =>
+      current === "Semua Tanggal" || dateOptions.includes(current)
+        ? current
+        : "Semua Tanggal"
+    );
+  }, [dateOptions]);
   useEffect(() => {
     setSelectedNumber((current) =>
       rows.some((row) => row.number === current) ? current : rows[0]?.number ?? ""
@@ -4761,6 +4910,7 @@ function SimpleReport({
                 const nextMonth = event.target.value;
                 const nextRows = filterByMonth(sourceRows, nextMonth);
                 setSelectedMonth(nextMonth);
+                setSelectedDate("Semua Tanggal");
                 setSelectedNumber(nextRows[0]?.number ?? "");
               }}
             >
@@ -4768,9 +4918,29 @@ function SimpleReport({
                 <option key={month}>{month}</option>
               ))}
             </Select>
+            {enableDateFilter ? (
+              <Select
+                className="w-full sm:w-[180px]"
+                value={selectedDate}
+                onChange={(event) => {
+                  const nextDate = event.target.value;
+                  const nextRows =
+                    nextDate === "Semua Tanggal"
+                      ? monthRows
+                      : monthRows.filter((row) => row.date === nextDate);
+                  setSelectedDate(nextDate);
+                  setSelectedNumber(nextRows[0]?.number ?? "");
+                }}
+              >
+                <option>Semua Tanggal</option>
+                {dateOptions.map((date) => (
+                  <option key={date}>{date}</option>
+                ))}
+              </Select>
+            ) : null}
             <Button onClick={() => downloadExport(type)}>
               <Download />
-              Export
+              Export Excel
             </Button>
           </div>
         </CardHeader>

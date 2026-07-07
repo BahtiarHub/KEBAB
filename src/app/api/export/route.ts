@@ -15,6 +15,12 @@ const transactionTypeByExport: Record<string, string> = {
   penjualan: "Penjualan"
 };
 
+type TransactionWithDetails = Awaited<ReturnType<typeof withDetails>>[number];
+type ExportTable = {
+  rows: Array<Record<string, unknown>>;
+  title: string;
+};
+
 async function withDetails(type?: string) {
   const transactions = await db.select().from(schema.transactions).all();
   const details = await db.select().from(schema.transactionDetails).all();
@@ -30,6 +36,130 @@ async function withDetails(type?: string) {
   }));
 }
 
+function escapeHtml(value: unknown) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function normalizeCell(value: unknown) {
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  return value;
+}
+
+function tableHtml({ rows, title }: ExportTable) {
+  const headers = Array.from(
+    rows.reduce<Set<string>>((result, row) => {
+      Object.keys(row).forEach((key) => result.add(key));
+      return result;
+    }, new Set())
+  );
+
+  return `
+    <h2>${escapeHtml(title)}</h2>
+    <table border="1">
+      <thead>
+        <tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr>
+      </thead>
+      <tbody>
+        ${
+          rows.length
+            ? rows
+                .map(
+                  (row) =>
+                    `<tr>${headers
+                      .map(
+                        (header) =>
+                          `<td>${escapeHtml(normalizeCell(row[header]))}</td>`
+                      )
+                      .join("")}</tr>`
+                )
+                .join("")
+            : `<tr><td colspan="${Math.max(headers.length, 1)}">Tidak ada data</td></tr>`
+        }
+      </tbody>
+    </table>
+    <br />
+  `;
+}
+
+function transactionRows(transactions: TransactionWithDetails[]) {
+  return transactions.map((transaction) => ({
+    Tanggal: transaction.date,
+    Nomor: transaction.number,
+    Tipe: transaction.type,
+    Lokasi: transaction.location,
+    Keterangan: transaction.note,
+    Total: transaction.total
+  }));
+}
+
+function transactionDetailRows(transactions: TransactionWithDetails[]) {
+  return transactions.flatMap((transaction) =>
+    transaction.details.map((detail) => ({
+      Tanggal: transaction.date,
+      Nomor: transaction.number,
+      Tipe: transaction.type,
+      Lokasi: transaction.location,
+      Item: detail.item,
+      Jumlah: detail.qty,
+      Harga: detail.price,
+      Total: detail.qty * detail.price,
+      Aktivitas: detail.activity
+    }))
+  );
+}
+
+function stockOpnameRows(rows: Array<typeof schema.stockOpnames.$inferSelect>) {
+  return rows.map((row) => ({
+    Tanggal: row.date,
+    Nomor: row.number,
+    Lokasi: row.location,
+    "Bahan Baku": row.material,
+    "Stok Sistem": row.systemStock,
+    "Stok Fisik": row.physicalStock,
+    Selisih: row.difference,
+    Petugas: row.officer
+  }));
+}
+
+function excelResponse(type: string, tables: ExportTable[]) {
+  const exportedAt = new Date();
+  const body = `<!doctype html>
+    <html>
+      <head>
+        <meta charset="utf-8" />
+        <style>
+          table { border-collapse: collapse; margin-bottom: 18px; }
+          th { background: #facc15; font-weight: 700; }
+          th, td { border: 1px solid #1f2937; padding: 6px 8px; }
+          h1, h2 { font-family: Arial, sans-serif; }
+        </style>
+      </head>
+      <body>
+        <h1>Export Excel ${escapeHtml(type)}</h1>
+        <p>Diekspor: ${escapeHtml(exportedAt.toISOString())}</p>
+        ${tables.map(tableHtml).join("")}
+      </body>
+    </html>`;
+  const filename = `${type
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")}-${exportedAt.getTime()}.xls`;
+
+  return new NextResponse(body, {
+    headers: {
+      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Content-Type": "application/vnd.ms-excel; charset=utf-8"
+    }
+  });
+}
+
 export async function GET(request: Request) {
   await ensureDatabase();
 
@@ -38,42 +168,69 @@ export async function GET(request: Request) {
   const transactionType = transactionTypeByExport[rawType];
 
   if (rawType === "neraca") {
-    return NextResponse.json({
-      data: {
-        dailyPerformance: await db.select().from(schema.dailyPerformance).all(),
-        monthlyParameters: await db.select().from(schema.monthlyParameters).all(),
-        stockOpnames: await db.select().from(schema.stockOpnames).all(),
-        transactions: await withDetails()
+    const transactions = await withDetails();
+    const stockOpnames = await db.select().from(schema.stockOpnames).all();
+    return excelResponse("neraca", [
+      {
+        rows: await db.select().from(schema.dailyPerformance).all(),
+        title: "Daily Performance"
       },
-      exportedAt: new Date().toISOString(),
-      type: "neraca"
-    });
+      {
+        rows: await db.select().from(schema.monthlyParameters).all(),
+        title: "Parameter Bulanan"
+      },
+      {
+        rows: transactionRows(transactions),
+        title: "Transaksi"
+      },
+      {
+        rows: transactionDetailRows(transactions),
+        title: "Detail Transaksi"
+      },
+      {
+        rows: stockOpnameRows(stockOpnames),
+        title: "Opname Stok"
+      }
+    ]);
   }
 
   if (rawType === "opname-stok" || rawType === "opname stok") {
-    return NextResponse.json({
-      data: await db.select().from(schema.stockOpnames).all(),
-      exportedAt: new Date().toISOString(),
-      type: "opname-stok"
-    });
+    const stockOpnames = await db.select().from(schema.stockOpnames).all();
+    return excelResponse("opname-stok", [
+      {
+        rows: stockOpnameRows(stockOpnames),
+        title: "Opname Stok"
+      }
+    ]);
   }
 
   if (rawType === "semua-penjualan" || rawType === "semua penjualan") {
-    const rows = await withDetails();
-    return NextResponse.json({
-      data: rows.filter(
-        (transaction) =>
-          transaction.type === "Penjualan" ||
-          transaction.type === "Kupat Tahu Penjualan"
-      ),
-      exportedAt: new Date().toISOString(),
-      type: rawType
-    });
+    const transactions = (await withDetails()).filter(
+      (transaction) =>
+        transaction.type === "Penjualan" ||
+        transaction.type === "Kupat Tahu Penjualan"
+    );
+    return excelResponse("semua-penjualan", [
+      {
+        rows: transactionRows(transactions),
+        title: "Penjualan"
+      },
+      {
+        rows: transactionDetailRows(transactions),
+        title: "Detail Penjualan"
+      }
+    ]);
   }
 
-  return NextResponse.json({
-    data: await withDetails(transactionType),
-    exportedAt: new Date().toISOString(),
-    type: rawType
-  });
+  const transactions = await withDetails(transactionType);
+  return excelResponse(rawType, [
+    {
+      rows: transactionRows(transactions),
+      title: "Transaksi"
+    },
+    {
+      rows: transactionDetailRows(transactions),
+      title: "Detail Transaksi"
+    }
+  ]);
 }
