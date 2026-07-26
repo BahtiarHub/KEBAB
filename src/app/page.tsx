@@ -694,6 +694,16 @@ function getTodayInputDate() {
   return new Date().toLocaleDateString("en-CA");
 }
 
+function getTodayDisplayDate() {
+  return new Intl.DateTimeFormat("id-ID", {
+    day: "2-digit",
+    month: "long",
+    timeZone: "Asia/Jakarta",
+    weekday: "long",
+    year: "numeric"
+  }).format(new Date());
+}
+
 function TransactionDateGate({
   date,
   onConfirm,
@@ -1369,7 +1379,7 @@ export default function Home() {
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="text-sm text-muted-foreground">
-                    Senin, 29 Juni 2026
+                    {getTodayDisplayDate()}
                   </p>
                   {backendData?.databaseSource ? (
                     <Badge variant="success">{backendData.databaseSource}</Badge>
@@ -1822,7 +1832,7 @@ function DashboardView({
         />
       </div>
 
-      <Card>
+    <Card>
         <CardHeader>
           <CardTitle>Peringatan Stok</CardTitle>
           <CardDescription>
@@ -2324,7 +2334,7 @@ function PurchaseView({
     <Card>
       <CardHeader className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <CardTitle>Belanja Bahan Baku</CardTitle>
-        <Badge variant="outline">BLJ-20260628-001</Badge>
+        <Badge variant="outline">Nomor dibuat saat disimpan</Badge>
       </CardHeader>
       <CardContent className="space-y-5">
         <div className="grid gap-4 md:grid-cols-[1fr_1fr_1.6fr]">
@@ -3228,7 +3238,7 @@ function MaintenanceUserView({
   >({});
   const [newUser, setNewUser] = useState({
     name: "",
-    password: "operator123",
+    password: "",
     role: "Operator" as UserRole
   });
   const [statusMessage, setStatusMessage] = useState("");
@@ -3348,7 +3358,7 @@ function MaintenanceUserView({
     await onChanged();
     setNewUser({
       name: "",
-      password: "operator123",
+      password: "",
       role: "Operator"
     });
     setStatusMessage("User baru berhasil dibuat.");
@@ -4396,12 +4406,12 @@ function SalesReport({
     setSelectedMonth((current) => (options.includes(current) ? current : nextMonth));
   }, [reportMonths, sourceRows]);
   const monthRows = filterByMonth(sourceRows, selectedMonth);
-  const rows =
+  const rows = aggregateDailySales(
     activeTab === "Total Penjualan"
-      ? aggregateDailySales(monthRows)
-      : monthRows.filter(
-          (row) => row.location === activeTab
-        );
+      ? monthRows
+      : monthRows.filter((row) => row.location === activeTab),
+    activeTab === "Total Penjualan" ? "Semua Kios" : activeTab
+  );
   useEffect(() => {
     setSelectedSalesDetailKey((current) =>
       rows.some((row) => salesDetailKey(row, activeTab) === current) ? current : ""
@@ -4661,12 +4671,15 @@ function SalesReport({
   );
 }
 
-function aggregateDailySales(rows: DailySalesReportRow[]): DailySalesReportRow[] {
+function aggregateDailySales(
+  rows: DailySalesReportRow[],
+  location = "Semua Kios"
+): DailySalesReportRow[] {
   const grouped = rows.reduce<Record<string, DailySalesReportRow>>((result, row) => {
     const current = result[row.date] ?? {
       date: row.date,
       grabGofood: 0,
-      location: "Semua Kios",
+      location,
       modal: 0,
       orderCount: 0,
       otherCost: 0,
