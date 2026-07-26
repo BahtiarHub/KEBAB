@@ -4203,7 +4203,8 @@ function AllSalesDailyReport({ reports }: { reports?: TransactionReportRow[] }) 
   const summary = rows.reduce(
     (total, row) => {
       const net = row.sales - row.modal - row.salary - row.otherCost;
-      const cash = net - row.grabGofood - row.qris;
+      const cash =
+        row.sales - row.grabGofood - row.qris - row.salary - row.otherCost;
 
       return {
         cash: total.cash + cash,
@@ -4211,6 +4212,7 @@ function AllSalesDailyReport({ reports }: { reports?: TransactionReportRow[] }) 
         modal: total.modal + row.modal,
         net: total.net + net,
         otherCost: total.otherCost + row.otherCost,
+        qris: total.qris + row.qris,
         salary: total.salary + row.salary,
         sales: total.sales + row.sales
       };
@@ -4221,6 +4223,7 @@ function AllSalesDailyReport({ reports }: { reports?: TransactionReportRow[] }) 
       modal: 0,
       net: 0,
       otherCost: 0,
+      qris: 0,
       salary: 0,
       sales: 0
     }
@@ -4252,10 +4255,11 @@ function AllSalesDailyReport({ reports }: { reports?: TransactionReportRow[] }) 
         </div>
       </CardHeader>
       <CardContent className="space-y-5">
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-5">
           <SummaryTile label="Omset Kotor" value={formatCurrency(summary.sales)} />
           <SummaryTile label="Modal" value={formatCurrency(summary.modal)} />
           <SummaryTile label="Penjualan Bersih" value={formatCurrency(summary.net)} strong />
+          <SummaryTile label="QRIS" value={formatCurrency(summary.qris)} />
           <SummaryTile label="Cash" value={formatCurrency(summary.cash)} />
         </div>
 
@@ -4265,19 +4269,20 @@ function AllSalesDailyReport({ reports }: { reports?: TransactionReportRow[] }) 
               <TableHead>Tanggal</TableHead>
               <TableHead>Omset Kotor</TableHead>
               <TableHead>Grab</TableHead>
+              <TableHead>QRIS</TableHead>
               <TableHead>Gaji</TableHead>
               <TableHead>Modal</TableHead>
-                <TableHead>Lain lain</TableHead>
-                <TableHead>Penjualan Bersih</TableHead>
-                <TableHead>Cash</TableHead>
-              </TableRow>
-            </TableHeader>
+              <TableHead>Lain lain</TableHead>
+              <TableHead>Penjualan Bersih</TableHead>
+              <TableHead>Cash</TableHead>
+            </TableRow>
+          </TableHeader>
           <TableBody>
             {rows.length === 0 ? (
               <TableRow>
                 <TableCell
                   className="py-8 text-center text-sm font-medium text-muted-foreground"
-                  colSpan={8}
+                  colSpan={9}
                 >
                   Belum ada data penjualan di Turso untuk periode ini.
                 </TableCell>
@@ -4285,13 +4290,15 @@ function AllSalesDailyReport({ reports }: { reports?: TransactionReportRow[] }) 
             ) : null}
             {rows.map((row) => {
               const net = row.sales - row.modal - row.salary - row.otherCost;
-              const cash = net - row.grabGofood - row.qris;
+              const cash =
+                row.sales - row.grabGofood - row.qris - row.salary - row.otherCost;
 
               return (
                 <TableRow key={row.date}>
                   <TableCell className="font-medium">{getDayLabel(row.date)}</TableCell>
                   <TableCell>{formatCurrencyDash(row.sales)}</TableCell>
                   <TableCell>{formatCurrencyDash(row.grabGofood)}</TableCell>
+                  <TableCell>{formatCurrencyDash(row.qris)}</TableCell>
                   <TableCell>{formatCurrencyDash(row.salary)}</TableCell>
                   <TableCell>{formatCurrencyDash(row.modal)}</TableCell>
                   <TableCell>{formatCurrencyDash(row.otherCost)}</TableCell>
@@ -4312,6 +4319,9 @@ function AllSalesDailyReport({ reports }: { reports?: TransactionReportRow[] }) 
                 </TableCell>
                 <TableCell className="font-black">
                   {formatCurrencyDash(summary.grabGofood)}
+                </TableCell>
+                <TableCell className="font-black">
+                  {formatCurrencyDash(summary.qris)}
                 </TableCell>
                 <TableCell className="font-black">
                   {formatCurrencyDash(summary.salary)}

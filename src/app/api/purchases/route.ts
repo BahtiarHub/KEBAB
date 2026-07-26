@@ -28,16 +28,19 @@ export async function POST(request: Request) {
   }
 
   const purchasedItems = body.items.filter((item) => item.qty > 0);
-  const number = `BLJ-${Date.now()}`;
+  const timestamp = Date.now();
+  const number = `BLJ-${timestamp}`;
   const subtotal = purchasedItems.reduce(
     (sum, item) => sum + item.qty * item.price,
     0
   );
-  const total = subtotal + (body.shippingCost ?? 0);
+  const shippingCost = body.shippingCost ?? 0;
+  const total = subtotal + shippingCost;
+  const date = formatDateForReport(body.date);
 
   await db.insert(schema.transactions)
     .values({
-      date: formatDateForReport(body.date),
+      date,
       location: "Gudang Utama",
       note: body.note || "Belanja bahan baku",
       number,
@@ -78,11 +81,11 @@ export async function POST(request: Request) {
     transactionNumber: number
   }));
 
-  if (body.shippingCost) {
+  if (shippingCost > 0) {
     detailRows.push({
       activity: "Ongkir tercatat sebagai biaya belanja",
       item: "Ongkir",
-      price: body.shippingCost,
+      price: shippingCost,
       qty: 1,
       transactionNumber: number
     });
@@ -90,6 +93,31 @@ export async function POST(request: Request) {
 
   if (detailRows.length) {
     await db.insert(schema.transactionDetails).values(detailRows).run();
+  }
+
+  if (shippingCost > 0) {
+    const shippingNumber = `BYA-${timestamp}-ONGKIR`;
+
+    await db.insert(schema.transactions)
+      .values({
+        date,
+        location: "Gudang Utama",
+        note: `Ongkos kirim dari ${number}`,
+        number: shippingNumber,
+        total: shippingCost,
+        type: "Biaya Lain Lain"
+      })
+      .run();
+
+    await db.insert(schema.transactionDetails)
+      .values({
+        activity: `Ongkir otomatis dari transaksi belanja ${number}`,
+        item: "Ongkos Kirim Belanja",
+        price: shippingCost,
+        qty: 1,
+        transactionNumber: shippingNumber
+      })
+      .run();
   }
 
   return NextResponse.json({ number, ok: true });
