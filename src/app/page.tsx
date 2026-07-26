@@ -2,11 +2,12 @@
 
 import Image from "next/image";
 import {
-  Activity,
   Archive,
+  CalendarDays,
   Calculator,
   Check,
   ChevronDown,
+  CircleDollarSign,
   DollarSign,
   Download,
   Eye,
@@ -21,11 +22,17 @@ import {
   PanelLeftOpen,
   Pencil,
   ReceiptText,
+  RefreshCw,
   ShieldCheck,
   ShoppingCart,
   Store,
+  TrendingDown,
+  TrendingUp,
   Truck,
-  Utensils
+  UserRound,
+  Utensils,
+  WalletCards,
+  X
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -655,27 +662,6 @@ const stockOpnameReports = [
   }
 ];
 
-const activityLog = [
-  {
-    time: "09:20",
-    user: "Operator Wadas",
-    module: "Penjualan",
-    action: "Input 18 tortilla besar, PACK KEBAB terhitung -18"
-  },
-  {
-    time: "08:55",
-    user: "Admin",
-    module: "Distribusi",
-    action: "Kirim 40 PACK KEBAB ke Kios Wadas"
-  },
-  {
-    time: "08:10",
-    user: "Operator Gudang",
-    module: "Belanja",
-    action: "Belanja roti burger 50 pcs, ongkir Rp 15.000"
-  }
-];
-
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("id-ID", {
     style: "currency",
@@ -914,6 +900,7 @@ export default function Home() {
   const [reportType, setReportType] = useState<ReportType>("Penjualan");
   const [currentRole, setCurrentRole] = useState<UserRole>("Admin");
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isBootstrapping, setIsBootstrapping] = useState(false);
   const [backendData, setBackendData] = useState<BackendBootstrap | null>(null);
   const [monthlyCostValues, setMonthlyCostValues] = useState<NumberMap>(() =>
     Object.fromEntries(
@@ -964,6 +951,14 @@ export default function Home() {
     }
   }
 
+  function toggleGroup(group: keyof typeof openGroups) {
+    setOpenGroups((current) => ({
+      kupatTahu: group === "kupatTahu" ? !current.kupatTahu : false,
+      report: group === "report" ? !current.report : false,
+      sales: group === "sales" ? !current.sales : false
+    }));
+  }
+
   async function loadBootstrap() {
     const response = await fetch("/api/bootstrap", { cache: "no-store" });
     if (response.ok) {
@@ -986,7 +981,7 @@ export default function Home() {
     }
   }
 
-  async function handleLogin(username: string, role: UserRole, password: string) {
+  async function handleLogin(username: string, password: string) {
     const normalizedUsername = username.trim().toLowerCase();
 
     if (!normalizedUsername) {
@@ -997,6 +992,7 @@ export default function Home() {
       ? normalizedUsername
       : `${normalizedUsername.replace(/[^a-z0-9]+/g, ".").replace(/^\.+|\.+$/g, "")}@yudhistira.local`;
     let loginEmail = fallbackEmail;
+    let matchedRole: UserRole = "Operator";
 
     try {
       const usersResponse = await fetch("/api/users", { cache: "no-store" });
@@ -1007,12 +1003,12 @@ export default function Home() {
         };
         const targetUser = usersPayload.users?.find(
           (user) =>
-            user.role === role &&
             (user.name.trim().toLowerCase() === normalizedUsername ||
               user.email.trim().toLowerCase() === normalizedUsername)
         );
 
         loginEmail = targetUser?.email ?? fallbackEmail;
+        matchedRole = targetUser?.role ?? matchedRole;
       }
     } catch {
       loginEmail = fallbackEmail;
@@ -1031,20 +1027,20 @@ export default function Home() {
     });
 
     if (!response.ok) {
-      throw new Error("Login gagal. Periksa role dan password.");
+      throw new Error("Login gagal. Periksa username dan password.");
     }
 
     const result = (await response.json()) as { user?: { role?: UserRole } };
-    if (result.user?.role && result.user.role !== role) {
-      await fetch("/api/auth/sign-out", { method: "POST" }).catch(() => undefined);
-      throw new Error("Role user tidak sesuai.");
-    }
-
-    setRole(result.user?.role ?? role);
+    setRole(result.user?.role ?? matchedRole);
     setIsAuthenticated(true);
+    setIsBootstrapping(true);
     setOpenGroups({ kupatTahu: false, report: false, sales: false });
     setActiveView("Dashboard");
-    await loadBootstrap();
+    try {
+      await loadBootstrap();
+    } finally {
+      setIsBootstrapping(false);
+    }
   }
 
   async function handleLogout() {
@@ -1075,7 +1071,7 @@ export default function Home() {
 
   if (!isAuthenticated) {
     return (
-      <main className="min-h-screen bg-[linear-gradient(135deg,#fffbea_0%,#facc15_52%,#b45309_100%)] px-4 py-8 md:px-6">
+      <main className="min-h-screen bg-yellow-400 px-4 py-8 md:px-6">
         <div className="mx-auto flex min-h-[calc(100vh-64px)] max-w-6xl items-center">
           <div className="grid w-full items-center gap-8 lg:grid-cols-[1.08fr_0.92fr]">
             <section className="text-amber-950">
@@ -1119,7 +1115,7 @@ export default function Home() {
                 ))}
               </div>
             </section>
-            <LoginUserView currentRole={currentRole} onLogin={handleLogin} />
+            <LoginUserView onLogin={handleLogin} />
           </div>
         </div>
       </main>
@@ -1127,14 +1123,14 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen bg-amber-50/70">
-      <header className="sticky top-0 z-40 border-b border-amber-300 bg-amber-300/95 px-4 py-3 text-amber-950 shadow-sm backdrop-blur md:px-6">
+    <main className="min-h-screen bg-slate-50">
+      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 px-4 py-3 text-slate-950 shadow-sm backdrop-blur md:px-6">
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             <Button
               aria-label="Buka tutup sidebar"
               size="icon"
-              variant="secondary"
+              variant="outline"
               onClick={() => setSidebarOpen((value) => !value)}
             >
               <Menu />
@@ -1147,8 +1143,8 @@ export default function Home() {
               className="rounded-md border bg-white object-cover"
             />
             <div className="min-w-0">
-              <p className="truncate text-sm font-bold">Yudhistira F&B</p>
-              <p className="truncate text-xs text-muted-foreground">
+              <p className="truncate text-sm font-black">Yudhistira F&B</p>
+              <p className="truncate text-xs text-slate-500">
                 Manajemen stok dan keuangan kebab
               </p>
             </div>
@@ -1159,11 +1155,17 @@ export default function Home() {
                 {backendData.databaseSource}
               </Badge>
             ) : null}
-            <Badge className="hidden sm:inline-flex" variant="warning">
-              {currentRole}
-            </Badge>
+            <div className="hidden items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1.5 sm:flex">
+              <span className="grid size-7 place-items-center rounded-md bg-yellow-400 text-slate-950">
+                <UserRound className="size-4" />
+              </span>
+              <div className="leading-tight">
+                <p className="text-xs font-bold text-slate-900">{currentRole}</p>
+                <p className="text-[11px] text-slate-500">Akun aktif</p>
+              </div>
+            </div>
             <Button
-              className="bg-amber-950 text-amber-50 hover:bg-amber-900"
+              className="bg-slate-950 text-white hover:bg-slate-800"
               onClick={handleLogout}
             >
               <LogOut />
@@ -1183,12 +1185,12 @@ export default function Home() {
         ) : null}
 
         <aside
-          className={`fixed inset-y-0 left-0 z-50 shrink-0 border-r border-amber-200 bg-white/95 shadow-xl backdrop-blur transition-all duration-200 lg:sticky lg:top-[73px] lg:z-20 lg:h-[calc(100vh-73px)] lg:shadow-none ${
+          className={`fixed inset-y-0 left-0 z-50 shrink-0 border-r border-slate-200 bg-white shadow-xl transition-all duration-200 lg:sticky lg:top-[73px] lg:z-20 lg:h-[calc(100vh-73px)] lg:shadow-none ${
             sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
           } ${sidebarCollapsed ? "w-[88px]" : "w-[292px]"}`}
         >
           <div className="flex h-full flex-col">
-            <div className="flex items-center justify-between border-b border-amber-200 bg-amber-50 p-3">
+            <div className="flex items-center justify-between border-b border-slate-100 bg-yellow-50/70 p-3">
               {!sidebarCollapsed ? (
                 <div>
                   <p className="text-sm font-bold">Menu Operasional</p>
@@ -1204,7 +1206,8 @@ export default function Home() {
                 {sidebarCollapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
               </Button>
             </div>
-            <nav className="space-y-2 overflow-auto p-4">
+            <nav className="space-y-1 overflow-auto px-3 py-4">
+              <NavSectionLabel collapsed={sidebarCollapsed} label="Ringkasan" />
               <NavButton
                 active={activeView === "Dashboard"}
                 collapsed={sidebarCollapsed}
@@ -1218,12 +1221,7 @@ export default function Home() {
                 icon={Store}
                 isOpen={openGroups.sales}
                 label="Penjualan Kebab"
-                onToggle={() =>
-                  setOpenGroups((current) => ({
-                    ...current,
-                    sales: !current.sales
-                  }))
-                }
+                onToggle={() => toggleGroup("sales")}
               >
                 {kiosks.map((kiosk) => (
                   <SubNavButton
@@ -1238,17 +1236,13 @@ export default function Home() {
                 ))}
               </NavGroup>
 
+              <NavSectionLabel collapsed={sidebarCollapsed} label="Transaksi" />
               <NavGroup
                 collapsed={sidebarCollapsed}
                 icon={Utensils}
                 isOpen={openGroups.kupatTahu}
                 label="Kupat Tahu"
-                onToggle={() =>
-                  setOpenGroups((current) => ({
-                    ...current,
-                    kupatTahu: !current.kupatTahu
-                  }))
-                }
+                onToggle={() => toggleGroup("kupatTahu")}
               >
                 {[
                   ["Kupat Tahu Belanja", "Belanja"],
@@ -1294,17 +1288,13 @@ export default function Home() {
                 onClick={() => setActiveView("Opname Stok")}
               />
 
+              <NavSectionLabel collapsed={sidebarCollapsed} label="Laporan" />
               <NavGroup
                 collapsed={sidebarCollapsed}
                 icon={FileSpreadsheet}
                 isOpen={openGroups.report}
                 label="Report"
-                onToggle={() =>
-                  setOpenGroups((current) => ({
-                    ...current,
-                    report: !current.report
-                  }))
-                }
+                onToggle={() => toggleGroup("report")}
               >
                 {(
                   [
@@ -1351,6 +1341,7 @@ export default function Home() {
               />
               {currentRole === "Admin" ? (
                 <>
+                  <NavSectionLabel collapsed={sidebarCollapsed} label="Administrasi" />
                   <NavButton
                     active={activeView === "Parameter"}
                     collapsed={sidebarCollapsed}
@@ -1374,18 +1365,19 @@ export default function Home() {
         </aside>
 
         <section className="min-w-0 flex-1">
-          <div className="border-b border-amber-200 bg-white/80 px-4 py-4 shadow-sm backdrop-blur md:px-6">
+          <div className="border-b border-slate-200 bg-white px-4 py-4 md:px-6">
             <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-sm text-muted-foreground">
+                  <span className="inline-flex items-center gap-1.5 text-sm text-slate-500">
+                    <CalendarDays className="size-4 text-yellow-600" />
                     {getTodayDisplayDate()}
-                  </p>
+                  </span>
                   {backendData?.databaseSource ? (
                     <Badge variant="success">{backendData.databaseSource}</Badge>
                   ) : null}
                 </div>
-                <h1 className="mt-1 text-2xl font-bold tracking-normal md:text-3xl">
+                <h1 className="mt-1 text-2xl font-black tracking-normal text-slate-950 md:text-3xl">
                   {title}
                 </h1>
               </div>
@@ -1405,6 +1397,10 @@ export default function Home() {
           </div>
 
           <div className="space-y-6 p-4 md:p-6">
+            {isBootstrapping ? (
+              <DashboardSkeleton />
+            ) : (
+              <>
             {activeView === "Dashboard" ? (
               <DashboardView
                 criticalItems={criticalItems}
@@ -1495,6 +1491,8 @@ export default function Home() {
                 users={backendData?.users}
               />
             ) : null}
+              </>
+            )}
           </div>
         </section>
       </div>
@@ -1516,28 +1514,28 @@ function FinancialMetricCard({
   value: string;
 }) {
   const toneClass = {
-    amber: "bg-amber-100 text-amber-900 ring-amber-200",
-    emerald: "bg-emerald-50 text-emerald-700 ring-emerald-200",
-    rose: "bg-rose-50 text-rose-700 ring-rose-200"
+    amber: "border-yellow-400 bg-yellow-50 text-yellow-800",
+    emerald: "border-emerald-500 bg-emerald-50 text-emerald-700",
+    rose: "border-rose-500 bg-rose-50 text-rose-700"
   }[tone];
 
   return (
-    <Card className="overflow-hidden">
+    <Card className={`overflow-hidden border-t-4 ${toneClass.split(" ")[0]}`}>
       <CardContent className="p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-xs font-bold uppercase tracking-normal text-amber-800">
+            <p className="text-xs font-bold uppercase text-slate-500">
               {label}
             </p>
-            <p className="mt-2 truncate text-2xl font-black tracking-normal text-amber-950">
+            <p className="mt-2 truncate text-2xl font-black text-slate-950">
               {value}
             </p>
           </div>
-          <div className={`rounded-md p-2 ring-1 ${toneClass}`}>
+          <div className={`rounded-md border p-2 ${toneClass}`}>
             <Icon className="size-4" />
           </div>
         </div>
-        <p className="mt-3 min-h-8 text-xs leading-4 text-muted-foreground">
+        <p className="mt-3 min-h-8 text-xs leading-4 text-slate-500">
           {note}
         </p>
       </CardContent>
@@ -1566,12 +1564,31 @@ function DashboardView({
   totalMonthlyCost: number;
 }) {
   const [selectedChartKiosk, setSelectedChartKiosk] = useState("Kios Wadas");
-  const salesReports = reports?.filter((report) => report.type === "Penjualan");
-  const kupatTahuSalesReports = reports?.filter(
+  const reportMonths = useMemo(
+    () => getAvailableMonths(reports ?? []),
+    [reports]
+  );
+  const [selectedMonth, setSelectedMonth] = useState(() =>
+    getDefaultReportMonth(reports ?? [])
+  );
+  useEffect(() => {
+    const options = reportMonths.length ? reportMonths : monthOptions;
+    setSelectedMonth((current) =>
+      options.includes(current)
+        ? current
+        : getDefaultReportMonth(reports ?? [])
+    );
+  }, [reportMonths, reports]);
+  const periodReports =
+    reports === undefined ? undefined : filterByMonth(reports, selectedMonth);
+  const salesReports = periodReports?.filter(
+    (report) => report.type === "Penjualan"
+  );
+  const kupatTahuSalesReports = periodReports?.filter(
     (report) => report.type === "Kupat Tahu Penjualan"
   );
   const expenseReports =
-    reports?.filter((report) => report.type === "Biaya Lain Lain") ?? [];
+    periodReports?.filter((report) => report.type === "Biaya Lain Lain") ?? [];
   const dashboardDailyRows =
     salesReports === undefined
       ? dailyPerformance
@@ -1597,11 +1614,27 @@ function DashboardView({
         ];
   const dailyLabels = Array.from(
     new Set(dashboardDailyRows.map((item) => item.date))
-  );
+  ).sort();
   const chartLocations = Array.from(new Set(dashboardDailyRows.map((item) => item.kiosk)));
-  const selectedDailyRows = dashboardDailyRows.filter(
-    (item) => item.kiosk === selectedChartKiosk
-  );
+  useEffect(() => {
+    if (
+      chartLocations.length > 0 &&
+      !chartLocations.includes(selectedChartKiosk)
+    ) {
+      setSelectedChartKiosk(chartLocations[0]);
+    }
+  }, [chartLocations, selectedChartKiosk]);
+  const selectedDailyRows = dailyLabels.map((date) => {
+    const rows = dashboardDailyRows.filter(
+      (item) => item.kiosk === selectedChartKiosk && item.date === date
+    );
+
+    return {
+      date,
+      laba: rows.reduce((sum, row) => sum + row.laba, 0),
+      omset: rows.reduce((sum, row) => sum + row.omset, 0)
+    };
+  });
   const totalDailyRows = dailyLabels.map((date) => {
     const rows = dashboardDailyRows.filter((item) => item.date === date);
 
@@ -1648,7 +1681,7 @@ function DashboardView({
       (sum, report) => sum + sumDetailsByItem(report, "QRIS Kupat Tahu"),
       0
     );
-  const dashboardOtherCost =
+  const dashboardSalesOtherCost =
     (salesReports?.reduce(
       (sum, report) => sum + sumDetailsByItem(report, "Lain lain"),
       0
@@ -1656,8 +1689,19 @@ function DashboardView({
     (kupatTahuSalesReports ?? []).reduce(
       (sum, report) => sum + sumDetailsByItem(report, "Lain lain Kupat Tahu"),
       0
-    ) +
-    expenseReports.reduce((sum, report) => sum + report.total, 0);
+    );
+  const dashboardExpenseCost = expenseReports.reduce(
+    (sum, report) => sum + report.total,
+    0
+  );
+  const dashboardOtherCost = dashboardSalesOtherCost + dashboardExpenseCost;
+  const dashboardGross = dashboardOmset - dashboardModal;
+  const dashboardCash =
+    dashboardOmset -
+    dashboardGrabGofood -
+    dashboardQris -
+    dashboardGaji -
+    dashboardSalesOtherCost;
   const dashboardLaba =
     dashboardOmset -
     dashboardModal -
@@ -1665,62 +1709,81 @@ function DashboardView({
     dashboardOtherCost -
     totalMonthlyCost +
     totalAdditionalIncome;
-  const dashboardActivities =
-    reports === undefined
-      ? activityLog.map((log) => ({
-          activity: log.action,
-          module: log.module,
-          time: log.time,
-          user: log.user
-        }))
-      : reports.slice(0, 5).map((report) => ({
-          activity: report.note,
-          module: report.type,
-          time: report.date,
-          user: report.location
-        }));
   const kpis = [
     {
       title: "Omset Bulanan",
       value: formatCurrency(dashboardOmset),
-      icon: Store,
-      note: "Akumulasi penjualan semua kios"
+      icon: CircleDollarSign,
+      note: "Akumulasi Kebab dan Kupat Tahu",
+      tone: "amber" as const
+    },
+    {
+      title: "Laba Kotor",
+      value: formatCurrency(dashboardGross),
+      icon: TrendingUp,
+      note: "Omset setelah modal terjual",
+      tone: "emerald" as const
     },
     {
       title: "Laba Bersih",
       value: formatCurrency(dashboardLaba),
       icon: DollarSign,
-      note: "Omset dikurangi modal, gaji, biaya, plus pendapatan tambahan"
+      note: "Setelah seluruh biaya dan pendapatan",
+      tone: dashboardLaba >= 0 ? ("emerald" as const) : ("rose" as const)
     },
     {
-      title: "Modal Bahan",
-      value: formatCurrency(dashboardModal),
-      icon: Archive,
-      note: "Modal bahan dari transaksi Turso"
+      title: "Cash Owner",
+      value: formatCurrency(dashboardCash),
+      icon: WalletCards,
+      note: "Setelah kanal non-cash dan biaya transaksi",
+      tone: dashboardCash >= 0 ? ("amber" as const) : ("rose" as const)
     },
     {
       title: "Nilai Stok Gudang",
       value: formatCurrency(getTotalStockValue("gudang", materials)),
       icon: PackageCheck,
-      note: "Berdasarkan harga beli"
-    },
-    {
-      title: "Stok Bermasalah",
-      value: `${criticalItems.length} item`,
-      icon: Activity,
-      note: "Hampir habis atau habis"
+      note: "Nilai persediaan berdasarkan harga beli",
+      tone: "amber" as const
     }
   ];
 
   return (
-    <>
+    <div className="space-y-6">
+      <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm font-bold text-slate-900">Ringkasan Bisnis</p>
+          <p className="text-xs text-slate-500">
+            Angka transaksi tersinkron dari database.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700">
+            <RefreshCw className="size-3.5" />
+            Data Turso
+          </div>
+          <div className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-2 py-1">
+            <CalendarDays className="size-4 text-slate-500" />
+            <Select
+              className="h-8 min-w-[170px] border-0 bg-transparent shadow-none"
+              value={selectedMonth}
+              onChange={(event) => setSelectedMonth(event.target.value)}
+            >
+              {(reportMonths.length ? reportMonths : monthOptions).map((month) => (
+                <option key={month}>{month}</option>
+              ))}
+            </Select>
+          </div>
+        </div>
+      </div>
+
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        {kpis.map(({ title, value, icon: Icon, note }) => (
+        {kpis.map(({ title, value, icon: Icon, note, tone }) => (
           <FinancialMetricCard
             key={title}
             icon={Icon}
             label={title}
             note={note}
+            tone={tone}
             value={value}
           />
         ))}
@@ -1796,48 +1859,53 @@ function DashboardView({
         </Card>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        <FinancialMetricCard
-          icon={ReceiptText}
-          label="Gaji"
-          note="Pengurang laba operasional"
-          tone="rose"
-          value={formatCurrency(dashboardGaji)}
-        />
-        <FinancialMetricCard
-          icon={Store}
-          label="Grab/GoFood"
-          note="Pengurang cash yang diterima owner"
-          value={formatCurrency(dashboardGrabGofood)}
-        />
-        <FinancialMetricCard
-          icon={ReceiptText}
-          label="QRIS"
-          note="Pengurang cash yang diterima owner"
-          value={formatCurrency(dashboardQris)}
-        />
-        <FinancialMetricCard
-          icon={Calculator}
-          label="Parameter Biaya"
-          note="Pengurang laba bulanan"
-          tone="rose"
-          value={formatCurrency(totalMonthlyCost)}
-        />
-        <FinancialMetricCard
-          icon={DollarSign}
-          label="Pendapatan Tambahan"
-          note="Penambah laba bersih"
-          tone="emerald"
-          value={formatCurrency(totalAdditionalIncome)}
-        />
+      <div className="grid overflow-hidden rounded-lg border border-slate-200 bg-white md:grid-cols-2 xl:grid-cols-6">
+        {[
+          { icon: Archive, label: "Modal", value: dashboardModal },
+          { icon: ReceiptText, label: "Gaji", value: dashboardGaji },
+          {
+            icon: Store,
+            label: "Grab + QRIS",
+            value: dashboardGrabGofood + dashboardQris
+          },
+          { icon: TrendingDown, label: "Biaya Transaksi", value: dashboardSalesOtherCost },
+          {
+            icon: Calculator,
+            label: "Biaya Bulanan",
+            value: dashboardExpenseCost + totalMonthlyCost
+          },
+          {
+            icon: DollarSign,
+            label: "Pendapatan Tambahan",
+            value: totalAdditionalIncome
+          }
+        ].map(({ icon: Icon, label, value }) => (
+          <div
+            key={label}
+            className="border-b border-slate-200 p-4 last:border-b-0 md:border-r xl:border-b-0"
+          >
+            <div className="flex items-center gap-2 text-slate-500">
+              <Icon className="size-4 text-yellow-600" />
+              <p className="text-xs font-bold uppercase">{label}</p>
+            </div>
+            <p className="mt-2 text-base font-black text-slate-900">
+              {formatCurrency(value)}
+            </p>
+          </div>
+        ))}
       </div>
 
-    <Card>
+      <Card>
         <CardHeader>
-          <CardTitle>Peringatan Stok</CardTitle>
-          <CardDescription>
-            Angka hijau aman, kuning hampir habis, merah habis.
-          </CardDescription>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <CardTitle>Peringatan Stok</CardTitle>
+              <CardDescription>Prioritas pengecekan stok operasional.</CardDescription>
+            </div>
+            <Badge variant={criticalItems.length ? "danger" : "success"}>
+              {formatNumber(criticalItems.length)} item
+            </Badge>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -1860,47 +1928,7 @@ function DashboardView({
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Aktivitas Terakhir</CardTitle>
-          <CardDescription>
-            Transaksi dan perubahan penting tersimpan di histori sistem.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Waktu</TableHead>
-                <TableHead>User</TableHead>
-                <TableHead>Modul</TableHead>
-                <TableHead>Aktivitas</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {dashboardActivities.length === 0 ? (
-                <TableRow>
-                  <TableCell
-                    className="py-8 text-center text-sm font-medium text-muted-foreground"
-                    colSpan={4}
-                  >
-                    Belum ada aktivitas transaksi di Turso.
-                  </TableCell>
-                </TableRow>
-              ) : null}
-              {dashboardActivities.map((log) => (
-                <TableRow key={`${log.time}-${log.module}-${log.activity}`}>
-                  <TableCell className="font-medium">{log.time}</TableCell>
-                  <TableCell>{log.user}</TableCell>
-                  <TableCell>{log.module}</TableCell>
-                  <TableCell>{log.activity}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-    </>
+    </div>
   );
 }
 
@@ -1913,7 +1941,7 @@ function LineChart({
 }) {
   const width = 720;
   const height = 300;
-  const padding = { bottom: 34, left: 46, right: 18, top: 20 };
+  const padding = { bottom: 18, left: 46, right: 18, top: 20 };
   const chartWidth = width - padding.left - padding.right;
   const chartHeight = height - padding.top - padding.bottom;
   const maxValue =
@@ -1930,7 +1958,7 @@ function LineChart({
 
   return (
     <div className="space-y-4">
-      <div className="h-[300px] w-full overflow-hidden rounded-md bg-amber-50/60">
+      <div className="h-[300px] w-full overflow-hidden rounded-md border border-slate-100 bg-slate-50">
         <svg
           aria-label="Line chart harian"
           className="h-full w-full"
@@ -1942,7 +1970,7 @@ function LineChart({
             return (
               <line
                 key={line}
-                stroke="#f3d47a"
+                stroke="#dbe2ea"
                 strokeDasharray="5 5"
                 strokeWidth="1"
                 x1={padding.left}
@@ -1950,21 +1978,6 @@ function LineChart({
                 y1={y}
                 y2={y}
               />
-            );
-          })}
-          {labels.map((label, index) => {
-            const point = getPoint(0, index);
-            return (
-              <text
-                key={label}
-                fill="#92400e"
-                fontSize="13"
-                textAnchor="middle"
-                x={point.x}
-                y={height - 10}
-              >
-                {label}
-              </text>
             );
           })}
           {series.map((item) => {
@@ -2238,12 +2251,14 @@ function SalesView({
             />
           </div>
 
-          <div className="flex flex-col gap-3 sm:flex-row">
-            {saveStatus ? (
-              <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm font-medium text-emerald-800">
-                {saveStatus}
-              </div>
-            ) : null}
+          <StatusToast message={saveStatus} onDismiss={() => setSaveStatus("")} />
+          <div className="transaction-summary-bar flex flex-col gap-3 rounded-lg border border-slate-200 bg-white/95 p-3 shadow-xl backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase text-slate-500">Transaksi Penjualan</p>
+              <p className="text-sm font-black text-slate-950">
+                Omset {formatCurrency(totalSales)} / Cash {formatCurrency(ownerCashReceived)}
+              </p>
+            </div>
             <Button onClick={saveSales}>
               <PackageMinus />
               Simpan Penjualan
@@ -2459,16 +2474,20 @@ function PurchaseView({
           />
         </div>
 
-        {saveStatus ? (
-          <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm font-medium text-emerald-800">
-            {saveStatus}
-          </div>
-        ) : null}
+        <StatusToast message={saveStatus} onDismiss={() => setSaveStatus("")} />
 
-        <Button onClick={savePurchase}>
-          <ShoppingCart />
-          Simpan Belanja
-        </Button>
+        <div className="transaction-summary-bar flex flex-col gap-3 rounded-lg border border-slate-200 bg-white/95 p-3 shadow-xl backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase text-slate-500">Event Belanja</p>
+            <p className="text-sm font-black text-slate-950">
+              {formatNumber(purchaseItemCount)} item / {formatCurrency(subtotal + shippingCost)}
+            </p>
+          </div>
+          <Button onClick={savePurchase}>
+            <ShoppingCart />
+            Simpan Belanja
+          </Button>
+        </div>
       </CardContent>
     </Card>
     </>
@@ -2629,16 +2648,20 @@ function DistributionView({
           </TableBody>
         </Table>
 
-        {saveStatus ? (
-          <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm font-medium text-emerald-800">
-            {saveStatus}
-          </div>
-        ) : null}
+        <StatusToast message={saveStatus} onDismiss={() => setSaveStatus("")} />
 
-        <Button onClick={saveDistribution}>
-          <Truck />
-          Simpan Distribusi
-        </Button>
+        <div className="transaction-summary-bar flex flex-col gap-3 rounded-lg border border-slate-200 bg-white/95 p-3 shadow-xl backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase text-slate-500">Distribusi</p>
+            <p className="text-sm font-black text-slate-950">
+              {formatNumber(distributionItemCount)} item / {formatNumber(distributionTotalQty)} qty
+            </p>
+          </div>
+          <Button onClick={saveDistribution}>
+            <Truck />
+            Simpan Distribusi
+          </Button>
+        </div>
       </CardContent>
     </Card>
     </>
@@ -2755,16 +2778,20 @@ function ExpenseView({ onSaved }: { onSaved: () => Promise<void> }) {
           </TableBody>
         </Table>
 
-        {saveStatus ? (
-          <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm font-medium text-emerald-800">
-            {saveStatus}
-          </div>
-        ) : null}
+        <StatusToast message={saveStatus} onDismiss={() => setSaveStatus("")} />
 
-        <Button onClick={saveExpense}>
-          <ReceiptText />
-          Simpan Biaya
-        </Button>
+        <div className="transaction-summary-bar flex flex-col gap-3 rounded-lg border border-slate-200 bg-white/95 p-3 shadow-xl backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase text-slate-500">Biaya {expenseKind}</p>
+            <p className="text-sm font-black text-slate-950">
+              {formatCurrency(expenseAmount)}
+            </p>
+          </div>
+          <Button onClick={saveExpense}>
+            <ReceiptText />
+            Simpan Biaya
+          </Button>
+        </div>
       </CardContent>
     </Card>
     </>
@@ -2836,16 +2863,18 @@ function KupatTahuPurchaseView({ onSaved }: { onSaved: () => Promise<void> }) {
 
         <SummaryTile label="Total Belanja Kupat Tahu" value={formatCurrency(amount)} strong />
 
-        {saveStatus ? (
-          <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm font-medium text-emerald-800">
-            {saveStatus}
-          </div>
-        ) : null}
+        <StatusToast message={saveStatus} onDismiss={() => setSaveStatus("")} />
 
-        <Button onClick={savePurchase}>
-          <ShoppingCart />
-          Simpan Belanja Kupat Tahu
-        </Button>
+        <div className="transaction-summary-bar flex flex-col gap-3 rounded-lg border border-slate-200 bg-white/95 p-3 shadow-xl backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase text-slate-500">Belanja Kupat Tahu</p>
+            <p className="text-sm font-black text-slate-950">{formatCurrency(amount)}</p>
+          </div>
+          <Button onClick={savePurchase}>
+            <ShoppingCart />
+            Simpan Belanja Kupat Tahu
+          </Button>
+        </div>
       </CardContent>
     </Card>
     </>
@@ -2948,16 +2977,20 @@ function KupatTahuSalesView({ onSaved }: { onSaved: () => Promise<void> }) {
           <SummaryTile label="Cash" value={formatCurrency(cash)} />
         </div>
 
-        {saveStatus ? (
-          <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm font-medium text-emerald-800">
-            {saveStatus}
-          </div>
-        ) : null}
+        <StatusToast message={saveStatus} onDismiss={() => setSaveStatus("")} />
 
-        <Button onClick={saveSales}>
-          <Utensils />
-          Simpan Penjualan Kupat Tahu
-        </Button>
+        <div className="transaction-summary-bar flex flex-col gap-3 rounded-lg border border-slate-200 bg-white/95 p-3 shadow-xl backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase text-slate-500">Penjualan Kupat Tahu</p>
+            <p className="text-sm font-black text-slate-950">
+              Omset {formatCurrency(omset)} / Cash {formatCurrency(cash)}
+            </p>
+          </div>
+          <Button onClick={saveSales}>
+            <Utensils />
+            Simpan Penjualan Kupat Tahu
+          </Button>
+        </div>
       </CardContent>
     </Card>
     </>
@@ -2965,13 +2998,10 @@ function KupatTahuSalesView({ onSaved }: { onSaved: () => Promise<void> }) {
 }
 
 function LoginUserView({
-  currentRole,
   onLogin
 }: {
-  currentRole: UserRole;
-  onLogin: (username: string, role: UserRole, password: string) => Promise<void>;
+  onLogin: (username: string, password: string) => Promise<void>;
 }) {
-  const [selectedRole, setSelectedRole] = useState<UserRole>(currentRole);
   const [loginError, setLoginError] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -2982,7 +3012,7 @@ function LoginUserView({
     setLoginError("");
     setLoginLoading(true);
     try {
-      await onLogin(username, selectedRole, password);
+      await onLogin(username, password);
     } catch (error) {
       setLoginError(error instanceof Error ? error.message : "Login gagal.");
     } finally {
@@ -2991,18 +3021,20 @@ function LoginUserView({
   }
 
   return (
-    <Card className="overflow-hidden border-white/70 bg-white/95 shadow-2xl backdrop-blur">
-      <CardHeader className="space-y-3 bg-amber-50/80">
+    <Card className="overflow-hidden border-white bg-white shadow-2xl">
+      <CardHeader className="space-y-3 bg-white">
         <div className="flex items-center justify-between gap-3">
           <Badge className="w-fit" variant="warning">
             Login Aman
           </Badge>
-          <Badge variant="outline">SQLite + Better Auth</Badge>
+          <div className="grid size-9 place-items-center rounded-md bg-slate-950 text-yellow-400">
+            <ShieldCheck className="size-4" />
+          </div>
         </div>
         <div>
           <CardTitle className="text-2xl">Masuk Aplikasi</CardTitle>
           <CardDescription>
-            Gunakan akun Admin atau Operator untuk membuka menu kerja.
+            Gunakan username dan password akun Anda.
           </CardDescription>
         </div>
       </CardHeader>
@@ -3034,32 +3066,19 @@ function LoginUserView({
             </button>
           </div>
         </Field>
-        <Field label="Role User">
-          <Select
-            value={selectedRole}
-            onChange={(event) => setSelectedRole(event.target.value as UserRole)}
-          >
-            <option value="Admin">Admin</option>
-            <option value="Operator">Operator</option>
-          </Select>
-        </Field>
         <Button
-          className="h-11 w-full bg-amber-950 text-amber-50 shadow-md hover:bg-amber-900"
+          className="h-11 w-full bg-slate-950 text-white shadow-md hover:bg-slate-800"
           disabled={loginLoading}
           onClick={submitLogin}
         >
           <ShieldCheck />
-          {loginLoading ? "Memproses..." : `Masuk sebagai ${selectedRole}`}
+          {loginLoading ? "Memproses..." : "Masuk ke Aplikasi"}
         </Button>
         {loginError ? (
           <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
             {loginError}
           </div>
         ) : null}
-        <div className="grid gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs font-medium text-amber-900 sm:grid-cols-2">
-          <span>Admin: parameter dan user</span>
-          <span>Operator: transaksi dan report</span>
-        </div>
       </CardContent>
     </Card>
   );
@@ -3212,11 +3231,7 @@ function ParameterView({
         </CardContent>
       </Card>
 
-      {saveStatus ? (
-        <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm font-medium text-emerald-800">
-          {saveStatus}
-        </div>
-      ) : null}
+      <StatusToast message={saveStatus} onDismiss={() => setSaveStatus("")} />
       <Button onClick={saveParameters}>
         <ShieldCheck />
         Simpan Parameter
@@ -3713,22 +3728,23 @@ function FinanceView({
     totalMonthlyCost + expenseTransactionTotal;
   const brilinkIncome =
     additionalIncomeValues.brilink ?? totalAdditionalIncome;
+  const grossProfit = finance.omset - finance.modal;
   const yudhistiraNet = totalSalesNet - operationalCostTotal;
   const finalNet = yudhistiraNet + brilinkIncome;
 
   return (
     <div className="space-y-6">
-      <Card className="border-amber-300 bg-amber-50/70">
-        <CardHeader className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <CardTitle>Neraca Keuangan Bulanan</CardTitle>
-            <CardDescription>
-              Format ringkas penjualan, biaya, dan laba bersih periode {selectedMonth}.
-            </CardDescription>
+            <h2 className="text-lg font-black text-slate-950">Neraca Keuangan Bulanan</h2>
+            <p className="text-sm text-slate-500">
+              Konsolidasi Kebab dan Kupat Tahu periode {selectedMonth}.
+            </p>
           </div>
-          <div className="flex flex-col gap-2 sm:flex-row">
+          <div className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-2 sm:flex-row">
+            <CalendarDays className="ml-1 hidden size-4 self-center text-slate-500 sm:block" />
             <Select
-              className="w-full sm:w-[180px]"
+              className="w-full border-0 shadow-none sm:w-[180px]"
               value={selectedMonth}
               onChange={(event) => setSelectedMonth(event.target.value)}
             >
@@ -3741,8 +3757,39 @@ function FinanceView({
             Export Excel
           </Button>
           </div>
-        </CardHeader>
-        <CardContent className="space-y-8">
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <FinancialMetricCard
+          icon={CircleDollarSign}
+          label="Total Omset"
+          note="Seluruh penjualan pada periode terpilih"
+          value={formatCurrency(finance.omset)}
+        />
+        <FinancialMetricCard
+          icon={TrendingUp}
+          label="Laba Kotor"
+          note="Omset dikurangi modal terjual"
+          tone="emerald"
+          value={formatCurrency(grossProfit)}
+        />
+        <FinancialMetricCard
+          icon={TrendingDown}
+          label="Total Biaya"
+          note="Parameter bulanan dan biaya transaksi"
+          tone="rose"
+          value={formatCurrency(operationalCostTotal)}
+        />
+        <FinancialMetricCard
+          icon={WalletCards}
+          label="Laba Bersih"
+          note="Hasil akhir termasuk pendapatan tambahan"
+          tone={finalNet >= 0 ? "emerald" : "rose"}
+          value={formatCurrency(finalNet)}
+        />
+      </div>
+
+      <div className="space-y-8 rounded-lg border border-slate-200 bg-slate-100 p-4 md:p-6">
           <div className="grid gap-6 xl:grid-cols-2">
             <FinanceSheetTable
               rows={[
@@ -3816,8 +3863,7 @@ function FinanceView({
               />
             </div>
           </div>
-        </CardContent>
-      </Card>
+      </div>
     </div>
   );
 }
@@ -3839,9 +3885,9 @@ function FinanceSheetTable({
   title?: string;
 }) {
   return (
-    <div className="overflow-hidden rounded-sm border border-amber-900 bg-white shadow-sm">
+    <div className="overflow-hidden rounded-md border border-slate-300 bg-white shadow-sm">
       {title ? (
-        <div className="bg-amber-950 px-3 py-1.5 text-center text-xs font-black uppercase tracking-normal text-amber-50">
+        <div className="bg-slate-950 px-3 py-2 text-center text-xs font-black uppercase text-white">
           {title}
         </div>
       ) : null}
@@ -3850,19 +3896,19 @@ function FinanceSheetTable({
           {rows.map((row) => (
             <tr key={row.label}>
               <td
-                className={`border border-amber-900 px-2 py-1.5 text-center font-semibold uppercase ${
+                className={`border border-slate-300 px-2 py-2 text-center font-semibold uppercase text-slate-800 ${
                   row.strong ? "font-black" : ""
                 }`}
               >
                 {row.label}
               </td>
               <td
-                className={`min-w-[110px] border border-amber-900 px-2 py-1.5 text-right font-bold ${
+                className={`min-w-[110px] border border-slate-300 px-2 py-2 text-right font-bold ${
                   row.highlight
                     ? "bg-emerald-700 text-white"
                     : row.strong
-                      ? "bg-amber-950 text-amber-50"
-                      : "bg-amber-50/40 text-amber-950"
+                      ? "bg-yellow-400 text-slate-950"
+                      : "bg-yellow-50 text-slate-950"
                 }`}
               >
                 {formatNumber(row.value)}
@@ -3871,10 +3917,10 @@ function FinanceSheetTable({
           ))}
           {footerLabel ? (
             <tr>
-              <td className="border border-amber-900 bg-amber-950 px-2 py-1.5 text-center font-black uppercase text-amber-50">
+              <td className="border border-slate-300 bg-slate-950 px-2 py-2 text-center font-black uppercase text-white">
                 {footerLabel}
               </td>
-              <td className="border border-amber-900 bg-amber-600 px-2 py-1.5 text-right font-black text-white">
+              <td className="border border-slate-300 bg-yellow-400 px-2 py-2 text-right font-black text-slate-950">
                 {formatNumber(footerValue ?? 0)}
               </td>
             </tr>
@@ -4584,20 +4630,16 @@ function SalesReport({
           </Table>
 
           {selectedSalesRow ? (
-            <Card>
-              <CardHeader>
-                <CardTitle>
-                  Detail Penjualan {selectedSalesRow.date}
-                  {activeTab === "Total Penjualan"
-                    ? ""
-                    : ` - ${selectedSalesRow.location}`}
-                </CardTitle>
-                <CardDescription>
-                  Rincian input transaksi pada tanggal yang dipilih.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <Table>
+            <DetailDrawer
+              onClose={() => setSelectedSalesDetailKey("")}
+              subtitle={`${formatNumber(selectedSalesTransactions.length)} transaksi tersimpan`}
+              title={`Penjualan ${selectedSalesRow.date}${
+                activeTab === "Total Penjualan"
+                  ? ""
+                  : ` - ${selectedSalesRow.location}`
+              }`}
+            >
+                <Table compact>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Nomor</TableHead>
@@ -4636,7 +4678,7 @@ function SalesReport({
                     <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-950">
                       Rincian Input {transaction.number}
                     </div>
-                    <Table>
+                    <Table compact>
                       <TableHeader>
                         <TableRow>
                           <TableHead>Item</TableHead>
@@ -4662,8 +4704,7 @@ function SalesReport({
                     </Table>
                   </div>
                 ))}
-              </CardContent>
-            </Card>
+            </DetailDrawer>
           ) : null}
         </CardContent>
       </Card>
@@ -4893,7 +4934,7 @@ function SimpleReport({
     enableDateFilter && selectedDate !== "Semua Tanggal"
       ? monthRows.filter((row) => row.date === selectedDate)
       : monthRows;
-  const [selectedNumber, setSelectedNumber] = useState(rows[0]?.number ?? "");
+  const [selectedNumber, setSelectedNumber] = useState("");
   useEffect(() => {
     const options = reportMonths.length ? reportMonths : monthOptions;
     const nextMonth = getDefaultReportMonth(sourceRows);
@@ -4908,10 +4949,10 @@ function SimpleReport({
   }, [dateOptions]);
   useEffect(() => {
     setSelectedNumber((current) =>
-      rows.some((row) => row.number === current) ? current : rows[0]?.number ?? ""
+      rows.some((row) => row.number === current) ? current : ""
     );
   }, [rows]);
-  const selectedTransaction = rows.find((row) => row.number === selectedNumber) ?? rows[0];
+  const selectedTransaction = rows.find((row) => row.number === selectedNumber);
   const total = rows.reduce((sum, row) => sum + row.total, 0);
   const gross = getGrossProfit();
 
@@ -4931,10 +4972,9 @@ function SimpleReport({
               value={selectedMonth}
               onChange={(event) => {
                 const nextMonth = event.target.value;
-                const nextRows = filterByMonth(sourceRows, nextMonth);
                 setSelectedMonth(nextMonth);
                 setSelectedDate("Semua Tanggal");
-                setSelectedNumber(nextRows[0]?.number ?? "");
+                setSelectedNumber("");
               }}
             >
               {(reportMonths.length ? reportMonths : monthOptions).map((month) => (
@@ -4947,12 +4987,8 @@ function SimpleReport({
                 value={selectedDate}
                 onChange={(event) => {
                   const nextDate = event.target.value;
-                  const nextRows =
-                    nextDate === "Semua Tanggal"
-                      ? monthRows
-                      : monthRows.filter((row) => row.date === nextDate);
                   setSelectedDate(nextDate);
-                  setSelectedNumber(nextRows[0]?.number ?? "");
+                  setSelectedNumber("");
                 }}
               >
                 <option>Semua Tanggal</option>
@@ -5027,12 +5063,12 @@ function SimpleReport({
       </Card>
 
       {selectedTransaction ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Detail Transaksi {selectedTransaction.number}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Table>
+        <DetailDrawer
+          onClose={() => setSelectedNumber("")}
+          subtitle={`${selectedTransaction.location} / ${selectedTransaction.date}`}
+          title={`Transaksi ${selectedTransaction.number}`}
+        >
+            <Table compact>
               <TableHeader>
                 <TableRow>
                   <TableHead>Item</TableHead>
@@ -5052,8 +5088,7 @@ function SimpleReport({
                 ))}
               </TableBody>
             </Table>
-          </CardContent>
-        </Card>
+        </DetailDrawer>
       ) : null}
     </div>
   );
@@ -5069,12 +5104,141 @@ function SummaryTile({
   value: string;
 }) {
   return (
-    <div className="rounded-md border p-4">
-      <p className="text-sm text-muted-foreground">{label}</p>
-      <p className={`mt-1 text-xl ${strong ? "font-bold text-primary" : "font-semibold"}`}>
+    <div
+      className={`rounded-lg border p-4 ${
+        strong
+          ? "border-yellow-300 bg-yellow-50"
+          : "border-slate-200 bg-white"
+      }`}
+    >
+      <p className="text-xs font-bold uppercase text-slate-500">{label}</p>
+      <p
+        className={`mt-1 text-xl ${
+          strong ? "font-black text-slate-950" : "font-bold text-slate-800"
+        }`}
+      >
         {value}
       </p>
     </div>
+  );
+}
+
+function DashboardSkeleton() {
+  return (
+    <div className="space-y-6" aria-label="Memuat data dashboard">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        {Array.from({ length: 5 }).map((_, index) => (
+          <div key={index} className="rounded-lg border border-slate-200 bg-white p-5">
+            <div className="skeleton-shimmer h-3 w-28 rounded" />
+            <div className="skeleton-shimmer mt-4 h-7 w-40 rounded" />
+            <div className="skeleton-shimmer mt-4 h-3 w-32 rounded" />
+          </div>
+        ))}
+      </div>
+      <div className="grid gap-6 xl:grid-cols-2">
+        {Array.from({ length: 2 }).map((_, index) => (
+          <div key={index} className="rounded-lg border border-slate-200 bg-white p-5">
+            <div className="skeleton-shimmer h-4 w-52 rounded" />
+            <div className="skeleton-shimmer mt-6 h-64 w-full rounded-lg" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function StatusToast({
+  message,
+  onDismiss
+}: {
+  message: string;
+  onDismiss: () => void;
+}) {
+  if (!message) {
+    return null;
+  }
+
+  const failed = /gagal|wajib|tidak|kosong/i.test(message);
+  const pending = /menyimpan|memproses|mengupdate/i.test(message);
+
+  return (
+    <div
+      className={`fixed bottom-5 right-5 z-[90] flex max-w-sm items-start gap-3 rounded-lg border bg-white p-4 shadow-2xl ${
+        failed
+          ? "border-red-200"
+          : pending
+            ? "border-yellow-300"
+            : "border-emerald-200"
+      }`}
+      role="status"
+    >
+      <span
+        className={`mt-0.5 size-2.5 shrink-0 rounded-full ${
+          failed ? "bg-red-500" : pending ? "bg-yellow-500" : "bg-emerald-500"
+        }`}
+      />
+      <p className="text-sm font-semibold leading-5 text-slate-800">{message}</p>
+      <button
+        aria-label="Tutup notifikasi"
+        className="ml-auto rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+        onClick={onDismiss}
+      >
+        <X className="size-4" />
+      </button>
+    </div>
+  );
+}
+
+function DetailDrawer({
+  children,
+  onClose,
+  subtitle,
+  title
+}: {
+  children: React.ReactNode;
+  onClose: () => void;
+  subtitle?: string;
+  title: string;
+}) {
+  return (
+    <div className="fixed inset-0 z-[80]" role="dialog" aria-modal="true">
+      <button
+        aria-label="Tutup detail"
+        className="absolute inset-0 bg-slate-950/35 backdrop-blur-[1px]"
+        onClick={onClose}
+      />
+      <aside className="drawer-enter absolute inset-y-0 right-0 flex w-full max-w-3xl flex-col border-l border-slate-200 bg-slate-50 shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-200 bg-white px-5 py-4">
+          <div>
+            <p className="text-xs font-bold uppercase text-yellow-700">Detail Aktivitas</p>
+            <h2 className="mt-1 text-xl font-black text-slate-950">{title}</h2>
+            {subtitle ? <p className="mt-1 text-sm text-slate-500">{subtitle}</p> : null}
+          </div>
+          <Button aria-label="Tutup detail" size="icon" variant="outline" onClick={onClose}>
+            <X />
+          </Button>
+        </div>
+        <div className="flex-1 space-y-5 overflow-auto p-4 md:p-5">{children}</div>
+      </aside>
+    </div>
+  );
+}
+
+function NavSectionLabel({
+  collapsed,
+  label
+}: {
+  collapsed: boolean;
+  label: string;
+}) {
+  if (collapsed) {
+    return <div className="my-2 h-px bg-slate-200" />;
+  }
+
+  return (
+    <p className="px-3 pb-1 pt-3 text-[10px] font-black uppercase text-slate-400">
+      {label}
+    </p>
   );
 }
 
@@ -5096,13 +5260,13 @@ function NavButton({
       aria-label={`Menu ${label}`}
       onClick={onClick}
       title={collapsed ? label : undefined}
-      className={`flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-sm font-bold transition-colors ${
+      className={`relative flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-sm font-semibold transition-colors ${
         active
-          ? "bg-amber-400 text-amber-950 shadow-sm"
-          : "text-amber-900 hover:bg-amber-100 hover:text-amber-950"
+          ? "bg-yellow-50 text-slate-950 before:absolute before:inset-y-2 before:left-0 before:w-1 before:rounded-r before:bg-yellow-500"
+          : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
       } ${collapsed ? "justify-center px-2" : ""}`}
     >
-      <Icon className="size-4" />
+      <Icon className={`size-4 ${active ? "text-yellow-600" : "text-slate-400"}`} />
       {!collapsed ? label : null}
     </button>
   );
@@ -5124,28 +5288,32 @@ function NavGroup({
   onToggle: () => void;
 }) {
   return (
-    <div className="rounded-lg border border-amber-200 bg-amber-50/80 p-2">
+    <div>
       <button
         aria-label={`Toggle ${label}`}
-        className={`flex w-full items-center justify-between rounded-md px-2 py-2 text-sm font-bold text-amber-950 hover:bg-white/70 ${
+        className={`flex w-full items-center justify-between rounded-md px-3 py-2.5 text-sm font-semibold transition-colors ${
+          isOpen ? "bg-yellow-50 text-slate-950" : "text-slate-600 hover:bg-slate-50"
+        } ${
           collapsed ? "justify-center" : ""
         }`}
         onClick={onToggle}
         title={collapsed ? label : undefined}
       >
         <span className="flex items-center gap-3">
-          <Icon className="size-4 text-primary" />
+          <Icon className={`size-4 ${isOpen ? "text-yellow-600" : "text-slate-400"}`} />
           {!collapsed ? label : null}
         </span>
         {!collapsed ? (
           <ChevronDown
-            className={`size-4 text-amber-800 transition-transform ${
+            className={`size-4 text-slate-400 transition-transform ${
               isOpen ? "rotate-180" : ""
             }`}
           />
         ) : null}
       </button>
-      {!collapsed && isOpen ? <div className="mt-2 space-y-1">{children}</div> : null}
+      {!collapsed && isOpen ? (
+        <div className="ml-5 mt-1 space-y-1 border-l border-yellow-200 pl-3">{children}</div>
+      ) : null}
     </div>
   );
 }
@@ -5164,8 +5332,8 @@ function SubNavButton({
       onClick={onClick}
       className={`w-full rounded-md px-3 py-2 text-left text-sm font-medium transition-colors ${
         active
-          ? "bg-white font-bold text-amber-950 shadow-sm"
-          : "text-amber-800 hover:bg-white/70 hover:text-amber-950"
+          ? "bg-yellow-100 font-bold text-slate-950"
+          : "text-slate-500 hover:bg-slate-50 hover:text-slate-950"
       }`}
     >
       {label}

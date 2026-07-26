@@ -3,25 +3,25 @@
 @tailwind utilities;
 
 :root {
-  --background: 45 92% 96%;
-  --foreground: 31 28% 12%;
+  --background: 210 40% 98%;
+  --foreground: 24 10% 12%;
   --card: 0 0% 100%;
-  --card-foreground: 31 28% 12%;
+  --card-foreground: 24 10% 12%;
   --popover: 0 0% 100%;
-  --popover-foreground: 31 28% 12%;
-  --primary: 42 96% 50%;
-  --primary-foreground: 30 36% 10%;
-  --secondary: 45 96% 86%;
-  --secondary-foreground: 32 38% 17%;
-  --muted: 43 68% 90%;
-  --muted-foreground: 31 14% 38%;
-  --accent: 31 94% 58%;
-  --accent-foreground: 30 36% 10%;
-  --destructive: 351 72% 44%;
-  --destructive-foreground: 38 40% 98%;
-  --border: 39 62% 80%;
-  --input: 39 62% 80%;
-  --ring: 42 96% 50%;
+  --popover-foreground: 24 10% 12%;
+  --primary: 43 100% 48%;
+  --primary-foreground: 24 20% 10%;
+  --secondary: 45 100% 91%;
+  --secondary-foreground: 28 45% 20%;
+  --muted: 210 24% 95%;
+  --muted-foreground: 215 14% 40%;
+  --accent: 45 100% 88%;
+  --accent-foreground: 26 48% 18%;
+  --destructive: 0 72% 50%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 214 22% 88%;
+  --input: 214 22% 84%;
+  --ring: 43 100% 48%;
   --radius: 0.5rem;
 }
 
@@ -31,11 +31,17 @@
 
 body {
   min-height: 100vh;
-  background:
-    linear-gradient(180deg, rgba(250, 204, 21, 0.24), rgba(255, 251, 235, 0.72) 360px, transparent 720px),
-    hsl(var(--background));
+  background: hsl(var(--background));
   color: hsl(var(--foreground));
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+body,
+button,
+input,
+select,
+textarea {
+  font-variant-numeric: tabular-nums;
 }
 
 button,
@@ -45,8 +51,76 @@ textarea {
   letter-spacing: 0;
 }
 
+.table-shell tbody tr:nth-child(even) td {
+  background-color: rgba(248, 250, 252, 0.92);
+}
+
+.table-shell tbody tr:hover td {
+  background-color: rgba(254, 249, 195, 0.68);
+}
+
+.table-shell th:first-child,
+.table-shell td:first-child {
+  left: 0;
+  position: sticky;
+}
+
+.table-shell th:first-child {
+  z-index: 30;
+}
+
+.table-shell td:first-child {
+  background-color: #fff;
+  box-shadow: 1px 0 0 #e2e8f0;
+  z-index: 10;
+}
+
+.table-shell tbody tr:nth-child(even) td:first-child {
+  background-color: #f8fafc;
+}
+
+.table-shell tbody tr:hover td:first-child {
+  background-color: #fef9c3;
+}
+
+.transaction-summary-bar {
+  bottom: 12px;
+  position: sticky;
+  z-index: 25;
+}
+
+.skeleton-shimmer {
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+  background: #e2e8f0;
+}
+
+@keyframes skeleton-pulse {
+  0%,
+  100% {
+    opacity: 0.52;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.drawer-enter {
+  animation: drawer-in 180ms ease-out;
+}
+
+@keyframes drawer-in {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
 .stock-safe {
-  color: #047857;
+  color: #15803d;
 }
 
 .stock-low {
@@ -54,7 +128,7 @@ textarea {
 }
 
 .stock-empty {
-  color: #be123c;
+  color: #dc2626;
 }
 
 ::selection {
@@ -68,15 +142,15 @@ textarea {
 }
 
 ::-webkit-scrollbar-track {
-  background: #fff7d6;
+  background: #f1f5f9;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #d97706;
-  border: 2px solid #fff7d6;
+  background: #cbd5e1;
+  border: 2px solid #f1f5f9;
   border-radius: 999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #92400e;
+  background: #f4b400;
 }

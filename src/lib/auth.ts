@@ -6,8 +6,12 @@ import { eq } from "drizzle-orm";
 import { db, ensureDatabase } from "@/db";
 import * as schema from "@/db/schema";
 
+const authBaseURL =
+  process.env.BETTER_AUTH_URL?.replace(/\/+$/, "") ??
+  "http://127.0.0.1:3000";
+
 export const auth = betterAuth({
-  baseURL: process.env.BETTER_AUTH_URL ?? "http://127.0.0.1:3000",
+  baseURL: authBaseURL,
   database: drizzleAdapter(db, {
     provider: "sqlite",
     schema
@@ -19,6 +23,13 @@ export const auth = betterAuth({
   secret:
     process.env.BETTER_AUTH_SECRET ??
     "development-only-secret-yudhistira-kebab-change-in-production",
+  trustedOrigins: Array.from(
+    new Set([
+      authBaseURL,
+      "http://127.0.0.1:3000",
+      "http://localhost:3000"
+    ])
+  ),
   user: {
     additionalFields: {
       role: {
