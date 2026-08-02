@@ -792,15 +792,37 @@ function getCurrentMonthLabel() {
 }
 
 function getMonthLabelFromDate(date: string) {
+  const isoDate = date.match(/^(\d{4})-(\d{2})-\d{2}$/);
+  if (isoDate) {
+    return `${monthOrder[Number(isoDate[2]) - 1]} ${isoDate[1]}`;
+  }
+
   const parts = date.split(" ").filter(Boolean);
-  const shortMonth = parts.find((part) => shortMonthMap[part]);
+  const shortMonth = parts.find((part) =>
+    Object.keys(shortMonthMap).some(
+      (month) => month.toLowerCase() === part.toLowerCase()
+    )
+  );
+  const fullMonth = parts.find((part) =>
+    monthOrder.some((month) => month.toLowerCase() === part.toLowerCase())
+  );
   const year = parts.find((part) => /^\d{4}$/.test(part)) ?? "2026";
+
+  if (fullMonth) {
+    return `${monthOrder.find(
+      (month) => month.toLowerCase() === fullMonth.toLowerCase()
+    )} ${year}`;
+  }
 
   if (!shortMonth) {
     return monthOptions[5];
   }
 
-  return `${shortMonthMap[shortMonth]} ${year}`;
+  const normalizedShortMonth = Object.keys(shortMonthMap).find(
+    (month) => month.toLowerCase() === shortMonth.toLowerCase()
+  );
+
+  return `${shortMonthMap[normalizedShortMonth ?? shortMonth]} ${year}`;
 }
 
 function filterByMonth<T extends { date: string }>(rows: T[], selectedMonth: string) {
@@ -873,8 +895,13 @@ function updateNumberMap(
   setter((current) => ({ ...current, [key]: value }));
 }
 
-async function downloadExport(type: string) {
-  const response = await fetch(`/api/export?type=${encodeURIComponent(type)}`, {
+async function downloadExport(type: string, month?: string) {
+  const searchParams = new URLSearchParams({ type });
+  if (month) {
+    searchParams.set("month", month);
+  }
+
+  const response = await fetch(`/api/export?${searchParams.toString()}`, {
     cache: "no-store"
   });
 
@@ -3960,7 +3987,7 @@ function FinanceView({
                 <option key={month}>{month}</option>
               ))}
             </Select>
-          <Button onClick={() => downloadExport("neraca")}>
+          <Button onClick={() => downloadExport("neraca", selectedMonth)}>
             <Download />
             Export Excel
           </Button>
