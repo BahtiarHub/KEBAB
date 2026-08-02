@@ -157,6 +157,15 @@ async function createTables() {
       difference INTEGER NOT NULL,
       officer TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS savings_transactions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      date TEXT NOT NULL,
+      note TEXT NOT NULL,
+      amount INTEGER NOT NULL,
+      direction TEXT NOT NULL DEFAULT 'credit',
+      created_at INTEGER NOT NULL
+    );
   `);
 }
 

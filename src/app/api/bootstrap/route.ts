@@ -15,6 +15,7 @@ export async function GET() {
   const monthlyParameters = await db.select().from(schema.monthlyParameters).all();
   const dailyPerformance = await db.select().from(schema.dailyPerformance).all();
   const stockOpnames = await db.select().from(schema.stockOpnames).all();
+  const savings = await db.select().from(schema.savingsTransactions).all();
   const users = await db
     .select({
       email: schema.user.email,
@@ -65,6 +66,7 @@ export async function GET() {
     materials: materialPayload,
     monthlyParameters,
     reports,
+    savings,
     stockOpnames,
     users
   });

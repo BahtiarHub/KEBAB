@@ -74,6 +74,8 @@ type View =
   | "Parameter"
   | "Setting Harga Jual"
   | "Maintenance User"
+  | "Input Tabungan"
+  | "Saldo Tabungan"
   | "Monitoring Stok";
 
 type ReportType =
@@ -108,6 +110,7 @@ type BackendBootstrap = {
     type: "cost" | "income";
   }>;
   reports: TransactionReportRow[];
+  savings: SavingsTransactionRow[];
   stockOpnames: StockOpnameReportRow[];
   users: Array<{
     email: string;
@@ -115,6 +118,15 @@ type BackendBootstrap = {
     name: string;
     role: UserRole;
   }>;
+};
+
+type SavingsTransactionRow = {
+  amount: number;
+  createdAt: string;
+  date: string;
+  direction: "debit" | "credit";
+  id: number;
+  note: string;
 };
 
 type DailyPerformanceRow = {
@@ -945,6 +957,7 @@ export default function Home() {
   const [openGroups, setOpenGroups] = useState({
     kupatTahu: false,
     report: false,
+    savings: false,
     sales: false
   });
   const appMaterials = backendData?.materials?.length ? backendData.materials : materials;
@@ -988,6 +1001,7 @@ export default function Home() {
     setOpenGroups((current) => ({
       kupatTahu: group === "kupatTahu" ? !current.kupatTahu : false,
       report: group === "report" ? !current.report : false,
+      savings: group === "savings" ? !current.savings : false,
       sales: group === "sales" ? !current.sales : false
     }));
   }
@@ -1067,7 +1081,7 @@ export default function Home() {
     setRole(result.user?.role ?? matchedRole);
     setIsAuthenticated(true);
     setIsBootstrapping(true);
-    setOpenGroups({ kupatTahu: false, report: false, sales: false });
+    setOpenGroups({ kupatTahu: false, report: false, savings: false, sales: false });
     setActiveView("Dashboard");
     try {
       await loadBootstrap();
@@ -1081,7 +1095,7 @@ export default function Home() {
     setIsAuthenticated(false);
     setBackendData(null);
     setSidebarOpen(false);
-    setOpenGroups({ kupatTahu: false, report: false, sales: false });
+    setOpenGroups({ kupatTahu: false, report: false, savings: false, sales: false });
     setActiveView("Dashboard");
   }
 
@@ -1321,6 +1335,25 @@ export default function Home() {
                 onClick={() => setActiveView("Opname Stok")}
               />
 
+              <NavGroup
+                collapsed={sidebarCollapsed}
+                icon={WalletCards}
+                isOpen={openGroups.savings}
+                label="Tabungan"
+                onToggle={() => toggleGroup("savings")}
+              >
+                <SubNavButton
+                  active={activeView === "Input Tabungan"}
+                  label="Input Tabungan"
+                  onClick={() => setActiveView("Input Tabungan")}
+                />
+                <SubNavButton
+                  active={activeView === "Saldo Tabungan"}
+                  label="Saldo Tabungan"
+                  onClick={() => setActiveView("Saldo Tabungan")}
+                />
+              </NavGroup>
+
               <NavSectionLabel collapsed={sidebarCollapsed} label="Laporan" />
               <NavGroup
                 collapsed={sidebarCollapsed}
@@ -1515,6 +1548,15 @@ export default function Home() {
             ) : null}
             {activeView === "Monitoring Stok" ? (
               <StockView materials={appMaterials} />
+            ) : null}
+            {activeView === "Input Tabungan" ? (
+              <SavingsInputView
+                onSaved={loadBootstrap}
+                rows={backendData?.savings ?? []}
+              />
+            ) : null}
+            {activeView === "Saldo Tabungan" ? (
+              <SavingsBalanceView rows={backendData?.savings ?? []} />
             ) : null}
             {activeView === "Parameter" && currentRole === "Admin" ? (
               <ParameterView
@@ -2841,6 +2883,401 @@ function ExpenseView({ onSaved }: { onSaved: () => Promise<void> }) {
       </CardContent>
     </Card>
     </>
+  );
+}
+
+function SavingsInputView({
+  onSaved,
+  rows
+}: {
+  onSaved: () => Promise<void>;
+  rows: SavingsTransactionRow[];
+}) {
+  const [amount, setAmount] = useState(0);
+  const [date, setDate] = useState("");
+  const [direction, setDirection] = useState<"debit" | "credit">("credit");
+  const [isSaving, setIsSaving] = useState(false);
+  const [note, setNote] = useState("");
+  const [saveStatus, setSaveStatus] = useState("");
+  const currentBalance = rows.reduce(
+    (total, row) => total + (row.direction === "credit" ? row.amount : -row.amount),
+    0
+  );
+  const balanceAfterTransaction =
+    currentBalance + (direction === "credit" ? amount : -amount);
+
+  async function saveSavings() {
+    if (!date || !note.trim() || amount <= 0) {
+      setSaveStatus("Tanggal, keterangan, dan nominal tabungan wajib diisi.");
+      return;
+    }
+
+    if (direction === "debit" && amount > currentBalance) {
+      setSaveStatus("Saldo tabungan tidak mencukupi untuk transaksi debet.");
+      return;
+    }
+
+    setIsSaving(true);
+    setSaveStatus("Menyimpan tabungan ke database...");
+
+    try {
+      const response = await fetch("/api/savings", {
+        body: JSON.stringify({ amount, date, direction, note }),
+        headers: { "Content-Type": "application/json" },
+        method: "POST"
+      });
+
+      if (!response.ok) {
+        const result = (await response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        setSaveStatus(result?.error ?? "Tabungan gagal disimpan.");
+        return;
+      }
+
+      setSaveStatus("Tabungan berhasil disimpan ke database.");
+      setAmount(0);
+      setNote("");
+      setDate("");
+      await onSaved();
+    } catch {
+      setSaveStatus("Tabungan gagal disimpan. Periksa koneksi aplikasi.");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  return (
+    <>
+      <TransactionDateGate
+        date={date}
+        onConfirm={setDate}
+        title="Tanggal Input Tabungan"
+      />
+      <Card>
+        <CardHeader className="border-b border-slate-100 bg-gradient-to-r from-yellow-50 to-white">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <WalletCards className="size-5 text-yellow-600" />
+                Input Tabungan
+              </CardTitle>
+              <CardDescription>
+                Catat uang masuk atau uang keluar dari tabungan.
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary">
+                <CalendarDays className="mr-1 size-3" />
+                {date}
+              </Badge>
+              <Button size="sm" variant="outline" onClick={() => setDate("")}>
+                Ganti Tanggal
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-6 pt-6">
+          <Field label="Jenis Transaksi">
+            <div className="grid max-w-xl grid-cols-2 rounded-lg border border-slate-200 bg-slate-50 p-1">
+              <button
+                className={`flex min-h-11 items-center justify-center gap-2 rounded-md px-3 text-sm font-bold transition-colors ${
+                  direction === "credit"
+                    ? "bg-emerald-600 text-white shadow-sm"
+                    : "text-slate-600 hover:bg-white"
+                }`}
+                onClick={() => setDirection("credit")}
+                type="button"
+              >
+                <TrendingUp className="size-4" />
+                Kredit (Uang Masuk)
+              </button>
+              <button
+                className={`flex min-h-11 items-center justify-center gap-2 rounded-md px-3 text-sm font-bold transition-colors ${
+                  direction === "debit"
+                    ? "bg-rose-600 text-white shadow-sm"
+                    : "text-slate-600 hover:bg-white"
+                }`}
+                onClick={() => setDirection("debit")}
+                type="button"
+              >
+                <TrendingDown className="size-4" />
+                Debet (Uang Keluar)
+              </button>
+            </div>
+          </Field>
+
+          <div className="grid gap-5 md:grid-cols-2">
+            <Field label="Keterangan">
+              <Input
+                autoFocus
+                maxLength={120}
+                placeholder="Contoh: Nabung hasil penjualan"
+                value={note}
+                onChange={(event) => setNote(event.target.value)}
+              />
+            </Field>
+            <Field label="Nominal Tabungan">
+              <NumberInput value={amount} onValueChange={setAmount} />
+            </Field>
+          </div>
+
+          <div className={`transaction-summary-bar flex flex-col gap-3 rounded-lg border p-4 shadow-xl backdrop-blur sm:flex-row sm:items-center sm:justify-between ${
+            direction === "credit"
+              ? "border-emerald-200 bg-emerald-50/95"
+              : "border-rose-200 bg-rose-50/95"
+          }`}>
+            <div>
+              <p className="text-xs font-bold uppercase text-slate-500">
+                {direction === "credit" ? "Kredit Tabungan" : "Debet Tabungan"}
+              </p>
+              <p className="mt-1 text-xl font-black text-slate-950">
+                {formatCurrency(amount)}
+              </p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">
+                Saldo saat ini {formatCurrency(currentBalance)} / setelah transaksi {formatCurrency(balanceAfterTransaction)}
+              </p>
+            </div>
+            <Button disabled={isSaving} onClick={saveSavings}>
+              {isSaving ? <RefreshCw className="animate-spin" /> : <WalletCards />}
+              {isSaving ? "Menyimpan..." : "Simpan Tabungan"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+      <StatusToast message={saveStatus} onDismiss={() => setSaveStatus("")} />
+    </>
+  );
+}
+
+const savingsMonthLabels: Record<string, string> = {
+  Januari: "JAN",
+  Februari: "FEBR",
+  Maret: "MAR",
+  April: "APRIL",
+  Mei: "MEI",
+  Juni: "JUN",
+  Juli: "JUL",
+  Agustus: "AGU",
+  September: "SEP",
+  Oktober: "OKT",
+  November: "NOV",
+  Desember: "DES"
+};
+
+function SavingsBalanceView({ rows }: { rows: SavingsTransactionRow[] }) {
+  const currentYear = new Date().getFullYear();
+  const availableYears = useMemo(() => {
+    const years = Array.from(
+      new Set([
+        currentYear,
+        ...rows.map((row) => Number(getMonthLabelFromDate(row.date).split(" ")[1]))
+      ])
+    ).filter((year) => Number.isFinite(year));
+
+    return years.sort((first, second) => second - first);
+  }, [currentYear, rows]);
+  const [selectedYear, setSelectedYear] = useState(() => availableYears[0] ?? currentYear);
+  const [selectedMonthIndex, setSelectedMonthIndex] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!availableYears.includes(selectedYear)) {
+      setSelectedYear(availableYears[0] ?? currentYear);
+    }
+  }, [availableYears, currentYear, selectedYear]);
+  useEffect(() => {
+    setSelectedMonthIndex(null);
+  }, [selectedYear]);
+
+  const summary = useMemo(() => {
+    const normalizedRows = rows.map((row) => {
+      const [month, year] = getMonthLabelFromDate(row.date).split(" ");
+      return {
+        ...row,
+        month,
+        monthIndex: monthOrder.indexOf(month),
+        year: Number(year)
+      };
+    });
+    const openingBalance = normalizedRows
+      .filter((row) => row.year < selectedYear)
+      .reduce(
+        (total, row) => total + (row.direction === "credit" ? row.amount : -row.amount),
+        0
+      );
+    let runningBalance = openingBalance;
+
+    const months = monthOrder.map((month, monthIndex) => {
+      const transactions = normalizedRows
+        .filter((row) => row.year === selectedYear && row.monthIndex === monthIndex)
+        .sort((first, second) => {
+          const dayDifference = Number(first.date.split(" ")[0]) - Number(second.date.split(" ")[0]);
+          return dayDifference || first.id - second.id;
+        });
+      const debit = transactions
+        .filter((row) => row.direction === "debit")
+        .reduce((total, row) => total + row.amount, 0);
+      const credit = transactions
+        .filter((row) => row.direction === "credit")
+        .reduce((total, row) => total + row.amount, 0);
+      runningBalance += credit - debit;
+
+      const notes = Array.from(new Set(transactions.map((row) => row.note.trim()))).filter(Boolean);
+      return {
+        balance: runningBalance,
+        credit,
+        debit,
+        label: savingsMonthLabels[month] ?? month.toUpperCase(),
+        month,
+        notes: notes.length > 2 ? `${notes.slice(0, 2).join(", ")} +${notes.length - 2}` : notes.join(", "),
+        transactions
+      };
+    });
+
+    return {
+      balance: runningBalance,
+      credit: months.reduce((total, month) => total + month.credit, 0),
+      debit: months.reduce((total, month) => total + month.debit, 0),
+      months,
+      openingBalance
+    };
+  }, [rows, selectedYear]);
+  const selectedMonth =
+    selectedMonthIndex === null ? null : summary.months[selectedMonthIndex];
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader className="flex flex-col gap-4 border-b border-slate-100 bg-gradient-to-r from-yellow-50 to-white sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <WalletCards className="size-5 text-yellow-600" />
+              Saldo Tabungan
+            </CardTitle>
+            <CardDescription>Rekap debet, kredit, dan saldo berjalan setiap bulan.</CardDescription>
+          </div>
+          <Select
+            className="w-full sm:w-[150px]"
+            value={String(selectedYear)}
+            onChange={(event) => setSelectedYear(Number(event.target.value))}
+          >
+            {availableYears.map((year) => (
+              <option key={year} value={year}>Tahun {year}</option>
+            ))}
+          </Select>
+        </CardHeader>
+        <CardContent className="space-y-5 pt-6">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <SummaryTile label="Saldo Awal" value={formatCurrency(summary.openingBalance)} />
+            <SummaryTile label="Total Debet" value={formatCurrency(summary.debit)} />
+            <SummaryTile label="Total Kredit" value={formatCurrency(summary.credit)} />
+            <SummaryTile label="Saldo Akhir" value={formatCurrency(summary.balance)} strong />
+          </div>
+
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-28">Bulan</TableHead>
+                <TableHead>Uraian</TableHead>
+                <TableHead className="text-right">Debet</TableHead>
+                <TableHead className="text-right">Kredit</TableHead>
+                <TableHead className="text-right">Saldo</TableHead>
+                <TableHead className="w-24 text-center">Aksi</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {summary.months.map((month, monthIndex) => (
+                <TableRow
+                  key={month.label}
+                  className={
+                    selectedMonthIndex === monthIndex
+                      ? "bg-yellow-100/70"
+                      : month.credit || month.debit
+                        ? "bg-yellow-50/40"
+                        : ""
+                  }
+                >
+                  <TableCell className="font-black text-slate-950">{month.label}</TableCell>
+                  <TableCell className="max-w-[360px] whitespace-normal font-medium">
+                    {month.notes || "-"}
+                  </TableCell>
+                  <TableCell className="text-right font-semibold text-rose-700">
+                    {month.debit ? formatNumber(month.debit) : "-"}
+                  </TableCell>
+                  <TableCell className="text-right font-semibold text-emerald-700">
+                    {month.credit ? formatNumber(month.credit) : "-"}
+                  </TableCell>
+                  <TableCell className="bg-slate-50 text-right font-black text-slate-950">
+                    {month.balance ? formatNumber(month.balance) : "-"}
+                  </TableCell>
+                  <TableCell className="text-center">
+                    {month.transactions.length ? (
+                      <Button
+                        size="sm"
+                        variant={selectedMonthIndex === monthIndex ? "default" : "outline"}
+                        onClick={() => setSelectedMonthIndex(monthIndex)}
+                      >
+                        <Eye />
+                        Detail
+                      </Button>
+                    ) : (
+                      <span className="text-slate-400">-</span>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      {selectedMonth ? (
+        <DetailDrawer
+          onClose={() => setSelectedMonthIndex(null)}
+          subtitle={`${formatNumber(selectedMonth.transactions.length)} transaksi pada ${selectedMonth.month} ${selectedYear}`}
+          title={`Detail Tabungan ${selectedMonth.month} ${selectedYear}`}
+        >
+          <div className="grid gap-3 sm:grid-cols-3">
+            <SummaryTile label="Total Debet" value={formatCurrency(selectedMonth.debit)} />
+            <SummaryTile label="Total Kredit" value={formatCurrency(selectedMonth.credit)} />
+            <SummaryTile label="Saldo Akhir Bulan" value={formatCurrency(selectedMonth.balance)} strong />
+          </div>
+
+          <Table compact>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Tanggal</TableHead>
+                <TableHead>Uraian</TableHead>
+                <TableHead>Jenis</TableHead>
+                <TableHead className="text-right">Debet</TableHead>
+                <TableHead className="text-right">Kredit</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {selectedMonth.transactions.map((transaction) => (
+                <TableRow key={transaction.id}>
+                  <TableCell className="whitespace-nowrap">{transaction.date}</TableCell>
+                  <TableCell className="min-w-[180px] font-medium">
+                    {transaction.note}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={transaction.direction === "credit" ? "success" : "danger"}>
+                      {transaction.direction === "credit" ? "Kredit" : "Debet"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-right font-semibold text-rose-700">
+                    {transaction.direction === "debit" ? formatNumber(transaction.amount) : "-"}
+                  </TableCell>
+                  <TableCell className="text-right font-semibold text-emerald-700">
+                    {transaction.direction === "credit" ? formatNumber(transaction.amount) : "-"}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </DetailDrawer>
+      ) : null}
+    </div>
   );
 }
 
@@ -5632,6 +6069,8 @@ function MobileSelect({
       <option value="Kupat Tahu Report Belanja">Kupat Tahu - Report Belanja</option>
       <option value="Kupat Tahu Report Penjualan">Kupat Tahu - Report Penjualan</option>
       <option value="Opname Stok">Opname Stok</option>
+      <option value="Input Tabungan">Tabungan - Input Tabungan</option>
+      <option value="Saldo Tabungan">Tabungan - Saldo Tabungan</option>
       <option value="Semua Penjualan">Report Total Penjualan</option>
       {(
         [
