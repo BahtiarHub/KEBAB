@@ -72,6 +72,7 @@ type View =
   | "Neraca Keuangan"
   | "Opname Stok"
   | "Parameter"
+  | "Setting Harga Jual"
   | "Maintenance User"
   | "Monitoring Stok";
 
@@ -946,7 +947,12 @@ export default function Home() {
 
   function setRole(role: UserRole) {
     setCurrentRole(role);
-    if (role === "Operator" && activeView === "Parameter") {
+    if (
+      role === "Operator" &&
+      (activeView === "Parameter" ||
+        activeView === "Setting Harga Jual" ||
+        activeView === "Maintenance User")
+    ) {
       setActiveView("Dashboard");
     }
   }
@@ -1350,6 +1356,13 @@ export default function Home() {
                     onClick={() => setActiveView("Parameter")}
                   />
                   <NavButton
+                    active={activeView === "Setting Harga Jual"}
+                    collapsed={sidebarCollapsed}
+                    icon={DollarSign}
+                    label="Setting Harga Jual"
+                    onClick={() => setActiveView("Setting Harga Jual")}
+                  />
+                  <NavButton
                     active={activeView === "Maintenance User"}
                     collapsed={sidebarCollapsed}
                     icon={ShieldCheck}
@@ -1483,6 +1496,12 @@ export default function Home() {
                 onSaved={loadBootstrap}
                 setAdditionalIncomeValues={setAdditionalIncomeValues}
                 setMonthlyCostValues={setMonthlyCostValues}
+              />
+            ) : null}
+            {activeView === "Setting Harga Jual" && currentRole === "Admin" ? (
+              <SellingPriceSettingsView
+                materials={appMaterials}
+                onSaved={loadBootstrap}
               />
             ) : null}
             {activeView === "Maintenance User" && currentRole === "Admin" ? (
@@ -3236,6 +3255,195 @@ function ParameterView({
         <ShieldCheck />
         Simpan Parameter
       </Button>
+    </div>
+  );
+}
+
+function SellingPriceSettingsView({
+  materials,
+  onSaved
+}: {
+  materials: Material[];
+  onSaved: () => Promise<void>;
+}) {
+  const sellableMaterials = useMemo(
+    () =>
+      materials.filter(
+        (item): item is Material & { sell: number } => item.sell !== null
+      ),
+    [materials]
+  );
+  const [sellPrices, setSellPrices] = useState<NumberMap>({});
+  const [editableCodes, setEditableCodes] = useState<Record<string, boolean>>({});
+  const [saveStatus, setSaveStatus] = useState("");
+
+  useEffect(() => {
+    setSellPrices(
+      Object.fromEntries(
+        sellableMaterials.map((item) => [item.code, item.sell])
+      ) as NumberMap
+    );
+    setEditableCodes({});
+  }, [sellableMaterials]);
+
+  const changedMaterials = sellableMaterials.filter(
+    (item) => (sellPrices[item.code] ?? item.sell) !== item.sell
+  );
+  const averageSellPrice = sellableMaterials.length
+    ? sellableMaterials.reduce((sum, item) => sum + item.sell, 0) /
+      sellableMaterials.length
+    : 0;
+
+  function toggleEdit(code: string) {
+    setEditableCodes((current) => ({
+      ...current,
+      [code]: !current[code]
+    }));
+  }
+
+  async function saveSellingPrices() {
+    if (changedMaterials.length === 0) {
+      setSaveStatus("Belum ada perubahan harga jual.");
+      return;
+    }
+
+    setSaveStatus("Menyimpan perubahan harga jual...");
+    const responses = await Promise.all(
+      changedMaterials.map((item) =>
+        fetch(`/api/materials/${encodeURIComponent(item.code)}`, {
+          body: JSON.stringify({ sell: sellPrices[item.code] }),
+          headers: { "Content-Type": "application/json" },
+          method: "PATCH"
+        })
+      )
+    );
+
+    if (responses.some((response) => !response.ok)) {
+      setSaveStatus("Sebagian harga jual gagal disimpan.");
+      return;
+    }
+
+    await onSaved();
+    setEditableCodes({});
+    setSaveStatus("Harga jual berhasil diperbarui di database.");
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-4 md:grid-cols-3">
+        <SummaryTile
+          label="Bahan dengan Harga Jual"
+          value={`${formatNumber(sellableMaterials.length)} bahan`}
+        />
+        <SummaryTile
+          label="Perubahan Belum Disimpan"
+          value={`${formatNumber(changedMaterials.length)} bahan`}
+          strong={changedMaterials.length > 0}
+        />
+        <SummaryTile
+          label="Rata-rata Harga Jual"
+          value={formatCurrency(averageSellPrice)}
+        />
+      </div>
+
+      <Card>
+        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <CardTitle>Setting Harga Jual Bahan</CardTitle>
+            <CardDescription>
+              Harga ini digunakan untuk menghitung nilai penjualan kios.
+            </CardDescription>
+          </div>
+          <Badge variant="warning">Khusus Admin</Badge>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Bahan Baku</TableHead>
+                <TableHead>Harga Beli</TableHead>
+                <TableHead>Harga Jual Saat Ini</TableHead>
+                <TableHead>Harga Jual Baru</TableHead>
+                <TableHead>Aksi</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {sellableMaterials.map((item) => {
+                const nextPrice = sellPrices[item.code] ?? item.sell;
+                const isEditing = editableCodes[item.code] ?? false;
+                const isChanged = nextPrice !== item.sell;
+
+                return (
+                  <TableRow key={item.code} className={isChanged ? "bg-yellow-50" : ""}>
+                    <TableCell>
+                      <p className="font-semibold">{item.name}</p>
+                      <p className="text-xs text-slate-500">{item.code}</p>
+                    </TableCell>
+                    <TableCell>{formatCurrency(item.buy)}</TableCell>
+                    <TableCell className="font-semibold">
+                      {formatCurrency(item.sell)}
+                    </TableCell>
+                    <TableCell>
+                      {isEditing ? (
+                        <NumberInput
+                          className="min-w-[150px]"
+                          value={nextPrice}
+                          onValueChange={(value) =>
+                            updateNumberMap(setSellPrices, item.code, value)
+                          }
+                        />
+                      ) : (
+                        <div
+                          className={`min-w-[150px] rounded-md border px-3 py-2 text-sm font-bold ${
+                            isChanged
+                              ? "border-yellow-300 bg-yellow-50 text-slate-950"
+                              : "border-slate-200 bg-slate-50 text-slate-700"
+                          }`}
+                        >
+                          {formatCurrency(nextPrice)}
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        aria-label={
+                          isEditing
+                            ? `Selesai edit ${item.name}`
+                            : `Edit harga jual ${item.name}`
+                        }
+                        size="icon"
+                        variant={isEditing ? "default" : "outline"}
+                        onClick={() => toggleEdit(item.code)}
+                      >
+                        {isEditing ? <Check /> : <Pencil />}
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+
+          <StatusToast message={saveStatus} onDismiss={() => setSaveStatus("")} />
+          <div className="transaction-summary-bar flex flex-col gap-3 rounded-lg border border-slate-200 bg-white/95 p-3 shadow-xl backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase text-slate-500">
+                Perubahan Harga Jual
+              </p>
+              <p className="text-sm font-black text-slate-950">
+                {formatNumber(changedMaterials.length)} bahan siap disimpan
+              </p>
+            </div>
+            <Button
+              disabled={changedMaterials.length === 0}
+              onClick={saveSellingPrices}
+            >
+              <DollarSign />
+              Simpan Harga Jual
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -5416,6 +5624,7 @@ function MobileSelect({
       {currentRole === "Admin" ? (
         <>
           <option value="Parameter">Parameter</option>
+          <option value="Setting Harga Jual">Setting Harga Jual</option>
           <option value="Maintenance User">Maintenance User</option>
         </>
       ) : null}

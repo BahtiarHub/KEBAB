@@ -356,3 +356,12 @@ export async function updateMaterialBuyPrice(code: string, buy: number) {
     .where(eq(schema.materials.code, code))
     .run();
 }
+
+export async function updateMaterialSellPrice(code: string, sell: number) {
+  await ensureDatabase();
+  return db
+    .update(schema.materials)
+    .set({ sell })
+    .where(eq(schema.materials.code, code))
+    .run();
+}
