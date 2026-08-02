@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { db, ensureDatabase } from "@/db";
@@ -60,6 +61,33 @@ export async function POST(request: Request) {
       direction,
       note
     })
+    .run();
+
+  return NextResponse.json({ ok: true });
+}
+
+export async function DELETE(request: Request) {
+  await ensureDatabase();
+
+  const body = (await request.json()) as { id?: number };
+
+  if (!Number.isInteger(body.id) || Number(body.id) <= 0) {
+    return NextResponse.json({ error: "ID transaksi tabungan tidak valid." }, { status: 400 });
+  }
+
+  const transaction = await db
+    .select({ id: schema.savingsTransactions.id })
+    .from(schema.savingsTransactions)
+    .where(eq(schema.savingsTransactions.id, Number(body.id)))
+    .get();
+
+  if (!transaction) {
+    return NextResponse.json({ error: "Transaksi tabungan tidak ditemukan." }, { status: 404 });
+  }
+
+  await db
+    .delete(schema.savingsTransactions)
+    .where(eq(schema.savingsTransactions.id, transaction.id))
     .run();
 
   return NextResponse.json({ ok: true });

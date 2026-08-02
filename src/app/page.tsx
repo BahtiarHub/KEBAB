@@ -28,6 +28,7 @@ import {
   Store,
   TrendingDown,
   TrendingUp,
+  Trash2,
   Truck,
   UserRound,
   Utensils,
@@ -1556,7 +1557,10 @@ export default function Home() {
               />
             ) : null}
             {activeView === "Saldo Tabungan" ? (
-              <SavingsBalanceView rows={backendData?.savings ?? []} />
+              <SavingsBalanceView
+                onChanged={loadBootstrap}
+                rows={backendData?.savings ?? []}
+              />
             ) : null}
             {activeView === "Parameter" && currentRole === "Admin" ? (
               <ParameterView
@@ -3065,7 +3069,13 @@ const savingsMonthLabels: Record<string, string> = {
   Desember: "DES"
 };
 
-function SavingsBalanceView({ rows }: { rows: SavingsTransactionRow[] }) {
+function SavingsBalanceView({
+  onChanged,
+  rows
+}: {
+  onChanged: () => Promise<void>;
+  rows: SavingsTransactionRow[];
+}) {
   const currentYear = new Date().getFullYear();
   const availableYears = useMemo(() => {
     const years = Array.from(
@@ -3079,6 +3089,9 @@ function SavingsBalanceView({ rows }: { rows: SavingsTransactionRow[] }) {
   }, [currentYear, rows]);
   const [selectedYear, setSelectedYear] = useState(() => availableYears[0] ?? currentYear);
   const [selectedMonthIndex, setSelectedMonthIndex] = useState<number | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<SavingsTransactionRow | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteStatus, setDeleteStatus] = useState("");
 
   useEffect(() => {
     if (!availableYears.includes(selectedYear)) {
@@ -3144,6 +3157,41 @@ function SavingsBalanceView({ rows }: { rows: SavingsTransactionRow[] }) {
   }, [rows, selectedYear]);
   const selectedMonth =
     selectedMonthIndex === null ? null : summary.months[selectedMonthIndex];
+
+  async function deleteSavingsTransaction() {
+    if (!pendingDelete) {
+      return;
+    }
+
+    setIsDeleting(true);
+    setDeleteStatus("Menghapus transaksi tabungan...");
+
+    try {
+      const response = await fetch("/api/savings", {
+        body: JSON.stringify({ id: pendingDelete.id }),
+        headers: { "Content-Type": "application/json" },
+        method: "DELETE"
+      });
+
+      if (!response.ok) {
+        const result = (await response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        setDeleteStatus(result?.error ?? "Transaksi tabungan gagal dihapus.");
+        return;
+      }
+
+      const deletedNote = pendingDelete.note;
+      setPendingDelete(null);
+      setSelectedMonthIndex(null);
+      await onChanged();
+      setDeleteStatus(`Transaksi ${deletedNote} berhasil dihapus.`);
+    } catch {
+      setDeleteStatus("Transaksi tabungan gagal dihapus. Periksa koneksi aplikasi.");
+    } finally {
+      setIsDeleting(false);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -3251,6 +3299,7 @@ function SavingsBalanceView({ rows }: { rows: SavingsTransactionRow[] }) {
                 <TableHead>Jenis</TableHead>
                 <TableHead className="text-right">Debet</TableHead>
                 <TableHead className="text-right">Kredit</TableHead>
+                <TableHead className="w-28 text-center">Aksi</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -3271,12 +3320,78 @@ function SavingsBalanceView({ rows }: { rows: SavingsTransactionRow[] }) {
                   <TableCell className="text-right font-semibold text-emerald-700">
                     {transaction.direction === "credit" ? formatNumber(transaction.amount) : "-"}
                   </TableCell>
+                  <TableCell className="text-center">
+                    <Button
+                      aria-label={`Hapus transaksi ${transaction.note}`}
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => setPendingDelete(transaction)}
+                    >
+                      <Trash2 />
+                      Hapus
+                    </Button>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         </DetailDrawer>
       ) : null}
+
+      {pendingDelete ? (
+        <div className="fixed inset-0 z-[100] grid place-items-center px-4" role="dialog" aria-modal="true">
+          <button
+            aria-label="Batal hapus transaksi"
+            className="absolute inset-0 bg-slate-950/50 backdrop-blur-sm"
+            onClick={() => setPendingDelete(null)}
+          />
+          <Card className="relative w-full max-w-md border-rose-200 shadow-2xl">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-rose-700">
+                <Trash2 className="size-5" />
+                Hapus Transaksi Tabungan
+              </CardTitle>
+              <CardDescription>
+                Transaksi yang sudah dihapus tidak dapat dikembalikan.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <p className="font-bold text-slate-950">{pendingDelete.note}</p>
+                <p className="mt-1 text-sm text-slate-500">{pendingDelete.date}</p>
+                <p className="mt-3 text-xl font-black text-slate-950">
+                  {formatCurrency(pendingDelete.amount)}
+                </p>
+                <Badge
+                  className="mt-2"
+                  variant={pendingDelete.direction === "credit" ? "success" : "danger"}
+                >
+                  {pendingDelete.direction === "credit" ? "Kredit" : "Debet"}
+                </Badge>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Button
+                  disabled={isDeleting}
+                  variant="outline"
+                  onClick={() => setPendingDelete(null)}
+                >
+                  Batal
+                </Button>
+                <Button
+                  disabled={isDeleting}
+                  variant="destructive"
+                  onClick={deleteSavingsTransaction}
+                >
+                  {isDeleting ? <RefreshCw className="animate-spin" /> : <Trash2 />}
+                  {isDeleting ? "Menghapus..." : "Hapus Transaksi"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
+
+      <StatusToast message={deleteStatus} onDismiss={() => setDeleteStatus("")} />
     </div>
   );
 }
