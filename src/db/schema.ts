@@ -105,6 +105,24 @@ export const monthlyParameters = sqliteTable("monthly_parameters", {
   note: text("note")
 });
 
+export const monthlyParameterValues = sqliteTable(
+  "monthly_parameter_values",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    parameterKey: text("parameter_key")
+      .notNull()
+      .references(() => monthlyParameters.key, { onDelete: "cascade" }),
+    month: text("month").notNull(),
+    amount: integer("amount").notNull().default(0)
+  },
+  (table) => ({
+    parameterMonth: uniqueIndex("monthly_parameter_value_idx").on(
+      table.parameterKey,
+      table.month
+    )
+  })
+);
+
 export const dailyPerformance = sqliteTable("daily_performance", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   date: text("date").notNull(),

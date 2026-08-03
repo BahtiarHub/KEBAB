@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { databaseSource, db, ensureDatabase } from "@/db";
@@ -13,6 +13,10 @@ export async function GET() {
   const materials = await db.select().from(schema.materials).all();
   const balances = await db.select().from(schema.stockBalances).all();
   const monthlyParameters = await db.select().from(schema.monthlyParameters).all();
+  const monthlyParameterValues = await db
+    .select()
+    .from(schema.monthlyParameterValues)
+    .all();
   const dailyPerformance = await db.select().from(schema.dailyPerformance).all();
   const stockOpnames = await db.select().from(schema.stockOpnames).all();
   const savings = await db.select().from(schema.savingsTransactions).all();
@@ -65,6 +69,7 @@ export async function GET() {
     locations,
     materials: materialPayload,
     monthlyParameters,
+    monthlyParameterValues,
     reports,
     savings,
     stockOpnames,
@@ -75,15 +80,69 @@ export async function GET() {
 export async function PATCH(request: Request) {
   await ensureDatabase();
 
-  const body = (await request.json()) as { parameterKey?: string; amount?: number };
+  const body = (await request.json()) as {
+    parameterKey?: string;
+    amount?: number;
+    month?: string;
+  };
 
-  if (!body.parameterKey || typeof body.amount !== "number") {
+  if (
+    !body.parameterKey ||
+    typeof body.amount !== "number" ||
+    body.amount < 0 ||
+    !body.month ||
+    !/^(Januari|Februari|Maret|April|Mei|Juni|Juli|Agustus|September|Oktober|November|Desember) \d{4}$/.test(body.month)
+  ) {
     return NextResponse.json({ error: "Invalid parameter payload" }, { status: 400 });
   }
 
-  await db.update(schema.monthlyParameters)
-    .set({ amount: body.amount })
+  const parameter = await db
+    .select({ key: schema.monthlyParameters.key })
+    .from(schema.monthlyParameters)
     .where(eq(schema.monthlyParameters.key, body.parameterKey))
+    .get();
+
+  if (!parameter) {
+    return NextResponse.json({ error: "Parameter not found" }, { status: 404 });
+  }
+
+  await db.insert(schema.monthlyParameterValues)
+    .values({
+      amount: Math.round(body.amount),
+      month: body.month,
+      parameterKey: body.parameterKey
+    })
+    .onConflictDoUpdate({
+      set: { amount: Math.round(body.amount) },
+      target: [
+        schema.monthlyParameterValues.parameterKey,
+        schema.monthlyParameterValues.month
+      ]
+    })
+    .run();
+
+  return NextResponse.json({ ok: true });
+}
+
+export async function DELETE(request: Request) {
+  await ensureDatabase();
+
+  const body = (await request.json()) as {
+    parameterKey?: string;
+    month?: string;
+  };
+
+  if (!body.parameterKey || !body.month) {
+    return NextResponse.json({ error: "Invalid parameter payload" }, { status: 400 });
+  }
+
+  await db.delete(schema.monthlyParameterValues)
+    .where(
+      and(
+        eq(schema.monthlyParameterValues.parameterKey, body.parameterKey),
+        eq(schema.monthlyParameterValues.month, body.month)
+      )
+    )
     .run();
 
   return NextResponse.json({ ok: true });

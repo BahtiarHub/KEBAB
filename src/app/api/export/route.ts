@@ -364,7 +364,19 @@ export async function GET(request: Request) {
     const expenseTotal = monthTransactions
       .filter((transaction) => transaction.type === "Biaya Lain Lain")
       .reduce((sum, transaction) => sum + transaction.total, 0);
-    const parameters = await db.select().from(schema.monthlyParameters).all();
+    const parameterDefinitions = await db.select().from(schema.monthlyParameters).all();
+    const monthlyParameterValues = await db
+      .select()
+      .from(schema.monthlyParameterValues)
+      .all();
+    const parameters = parameterDefinitions.map((parameter) => ({
+      ...parameter,
+      amount:
+        monthlyParameterValues.find(
+          (value) =>
+            value.parameterKey === parameter.key && value.month === period
+        )?.amount ?? (parameter.type === "cost" ? parameter.amount : 0)
+    }));
     const kebab = {
       gaji: sales.reduce((sum, item) => sum + sumDetail(item, "Gaji Karyawan"), 0),
       grab: sales.reduce((sum, item) => sum + sumDetail(item, "Grab/GoFood"), 0),

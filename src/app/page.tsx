@@ -89,6 +89,19 @@ type LocationKey = "gudang" | "wadas" | "ciherang" | "bubulak";
 type KioskKey = Exclude<LocationKey, "gudang">;
 type NumberMap = Record<string, number>;
 type UserRole = "Admin" | "Operator";
+type MonthlyParameterDefinition = {
+  amount: number;
+  key: string;
+  name: string;
+  note: string | null;
+  type: "cost" | "income";
+};
+type MonthlyParameterValue = {
+  amount: number;
+  id: number;
+  month: string;
+  parameterKey: string;
+};
 type TransactionType =
   | "Penjualan"
   | "Belanja"
@@ -103,13 +116,8 @@ type BackendBootstrap = {
   databaseSource: string;
   dailyPerformance: DailyPerformanceRow[];
   materials: Material[];
-  monthlyParameters: Array<{
-    amount: number;
-    key: string;
-    name: string;
-    note: string | null;
-    type: "cost" | "income";
-  }>;
+  monthlyParameters: MonthlyParameterDefinition[];
+  monthlyParameterValues: MonthlyParameterValue[];
   reports: TransactionReportRow[];
   savings: SavingsTransactionRow[];
   stockOpnames: StockOpnameReportRow[];
@@ -882,6 +890,47 @@ function getNumberMapTotal(values: NumberMap) {
   return Object.values(values).reduce((total, value) => total + value, 0);
 }
 
+function getMonthlyParameterDefinitions(
+  definitions?: MonthlyParameterDefinition[]
+) {
+  if (definitions?.length) {
+    return definitions;
+  }
+
+  return [
+    ...monthlyCostParameters.map((item) => ({
+      ...item,
+      note: "note" in item ? item.note ?? null : null,
+      type: "cost" as const
+    })),
+    ...additionalIncomeParameters.map((item) => ({
+      ...item,
+      note: item.note ?? null,
+      type: "income" as const
+    }))
+  ];
+}
+
+function getMonthlyParameterMap(
+  definitions: MonthlyParameterDefinition[] | undefined,
+  values: MonthlyParameterValue[] | undefined,
+  month: string,
+  type: "cost" | "income"
+) {
+  return Object.fromEntries(
+    getMonthlyParameterDefinitions(definitions)
+      .filter((parameter) => parameter.type === type)
+      .map((parameter) => {
+        const storedValue = values?.find(
+          (value) =>
+            value.parameterKey === parameter.key && value.month === month
+        );
+        const fallbackAmount = type === "cost" ? parameter.amount : 0;
+        return [parameter.key, storedValue?.amount ?? fallbackAmount];
+      })
+  ) as NumberMap;
+}
+
 function getGrossProfit() {
   return monthlyFinance.omset - monthlyFinance.modal;
 }
@@ -943,16 +992,6 @@ export default function Home() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isBootstrapping, setIsBootstrapping] = useState(false);
   const [backendData, setBackendData] = useState<BackendBootstrap | null>(null);
-  const [monthlyCostValues, setMonthlyCostValues] = useState<NumberMap>(() =>
-    Object.fromEntries(
-      monthlyCostParameters.map((item) => [item.key, item.amount])
-    ) as NumberMap
-  );
-  const [additionalIncomeValues, setAdditionalIncomeValues] = useState<NumberMap>(() =>
-    Object.fromEntries(
-      additionalIncomeParameters.map((item) => [item.key, item.amount])
-    ) as NumberMap
-  );
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [openGroups, setOpenGroups] = useState({
@@ -983,9 +1022,6 @@ export default function Home() {
       ),
     [appMaterials]
   );
-  const totalMonthlyCost = getNumberMapTotal(monthlyCostValues);
-  const totalAdditionalIncome = getNumberMapTotal(additionalIncomeValues);
-
   function setRole(role: UserRole) {
     setCurrentRole(role);
     if (
@@ -1012,20 +1048,6 @@ export default function Home() {
     if (response.ok) {
       const payload = (await response.json()) as BackendBootstrap;
       setBackendData(payload);
-      setMonthlyCostValues(
-        Object.fromEntries(
-          payload.monthlyParameters
-            .filter((item) => item.type === "cost")
-            .map((item) => [item.key, item.amount])
-        ) as NumberMap
-      );
-      setAdditionalIncomeValues(
-        Object.fromEntries(
-          payload.monthlyParameters
-            .filter((item) => item.type === "income")
-            .map((item) => [item.key, item.amount])
-        ) as NumberMap
-      );
     }
   }
 
@@ -1480,9 +1502,9 @@ export default function Home() {
                 criticalItems={criticalItems}
                 dailyPerformance={backendData?.dailyPerformance ?? dailyKioskPerformance}
                 materials={appMaterials}
+                monthlyParameters={backendData?.monthlyParameters}
+                monthlyParameterValues={backendData?.monthlyParameterValues}
                 reports={backendData?.reports}
-                totalAdditionalIncome={totalAdditionalIncome}
-                totalMonthlyCost={totalMonthlyCost}
               />
             ) : null}
             {activeView === "Penjualan" ? (
@@ -1540,11 +1562,9 @@ export default function Home() {
             ) : null}
             {activeView === "Neraca Keuangan" ? (
               <FinanceView
-                additionalIncomeValues={additionalIncomeValues}
-                monthlyCostValues={monthlyCostValues}
+                monthlyParameters={backendData?.monthlyParameters}
+                monthlyParameterValues={backendData?.monthlyParameterValues}
                 reports={backendData?.reports}
-                totalAdditionalIncome={totalAdditionalIncome}
-                totalMonthlyCost={totalMonthlyCost}
               />
             ) : null}
             {activeView === "Monitoring Stok" ? (
@@ -1564,11 +1584,10 @@ export default function Home() {
             ) : null}
             {activeView === "Parameter" && currentRole === "Admin" ? (
               <ParameterView
-                additionalIncomeValues={additionalIncomeValues}
-                monthlyCostValues={monthlyCostValues}
+                monthlyParameters={backendData?.monthlyParameters}
+                monthlyParameterValues={backendData?.monthlyParameterValues}
                 onSaved={loadBootstrap}
-                setAdditionalIncomeValues={setAdditionalIncomeValues}
-                setMonthlyCostValues={setMonthlyCostValues}
+                reports={backendData?.reports}
               />
             ) : null}
             {activeView === "Setting Harga Jual" && currentRole === "Admin" ? (
@@ -1639,9 +1658,9 @@ function DashboardView({
   criticalItems,
   dailyPerformance,
   materials,
-  reports,
-  totalAdditionalIncome,
-  totalMonthlyCost
+  monthlyParameters,
+  monthlyParameterValues,
+  reports
 }: {
   criticalItems: Array<{
     item: Material;
@@ -1651,9 +1670,9 @@ function DashboardView({
   }>;
   dailyPerformance: DailyPerformanceRow[];
   materials: Material[];
+  monthlyParameters?: MonthlyParameterDefinition[];
+  monthlyParameterValues?: MonthlyParameterValue[];
   reports?: TransactionReportRow[];
-  totalAdditionalIncome: number;
-  totalMonthlyCost: number;
 }) {
   const [selectedChartKiosk, setSelectedChartKiosk] = useState("Kios Wadas");
   const reportMonths = useMemo(
@@ -1671,6 +1690,20 @@ function DashboardView({
         : getDefaultReportMonth(reports ?? [])
     );
   }, [reportMonths, reports]);
+  const monthlyCostValues = getMonthlyParameterMap(
+    monthlyParameters,
+    monthlyParameterValues,
+    selectedMonth,
+    "cost"
+  );
+  const additionalIncomeValues = getMonthlyParameterMap(
+    monthlyParameters,
+    monthlyParameterValues,
+    selectedMonth,
+    "income"
+  );
+  const totalMonthlyCost = getNumberMapTotal(monthlyCostValues);
+  const totalAdditionalIncome = getNumberMapTotal(additionalIncomeValues);
   const periodReports =
     reports === undefined ? undefined : filterByMonth(reports, selectedMonth);
   const salesReports = periodReports?.filter(
@@ -3683,46 +3716,136 @@ function LoginUserView({
 }
 
 function ParameterView({
-  additionalIncomeValues,
-  monthlyCostValues,
+  monthlyParameters,
+  monthlyParameterValues,
   onSaved,
-  setAdditionalIncomeValues,
-  setMonthlyCostValues
+  reports
 }: {
-  additionalIncomeValues: NumberMap;
-  monthlyCostValues: NumberMap;
+  monthlyParameters?: MonthlyParameterDefinition[];
+  monthlyParameterValues?: MonthlyParameterValue[];
   onSaved: () => Promise<void>;
-  setAdditionalIncomeValues: React.Dispatch<React.SetStateAction<NumberMap>>;
-  setMonthlyCostValues: React.Dispatch<React.SetStateAction<NumberMap>>;
+  reports?: TransactionReportRow[];
 }) {
+  const definitions = useMemo(
+    () => getMonthlyParameterDefinitions(monthlyParameters),
+    [monthlyParameters]
+  );
+  const costParameters = definitions.filter((item) => item.type === "cost");
+  const incomeParameters = definitions.filter((item) => item.type === "income");
+  const parameterMonths = useMemo(() => {
+    const months = new Set([
+      ...monthOptions,
+      ...getAvailableMonths(reports ?? []),
+      getCurrentMonthLabel()
+    ]);
+    return Array.from(months).sort(compareMonthLabels);
+  }, [reports]);
+  const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthLabel);
+  const [monthlyCostValues, setMonthlyCostValues] = useState<NumberMap>({});
+  const [additionalIncomeValues, setAdditionalIncomeValues] = useState<NumberMap>({});
+  const [saveStatus, setSaveStatus] = useState("");
+
+  useEffect(() => {
+    setMonthlyCostValues(
+      getMonthlyParameterMap(
+        monthlyParameters,
+        monthlyParameterValues,
+        selectedMonth,
+        "cost"
+      )
+    );
+    setAdditionalIncomeValues(
+      getMonthlyParameterMap(
+        monthlyParameters,
+        monthlyParameterValues,
+        selectedMonth,
+        "income"
+      )
+    );
+  }, [monthlyParameters, monthlyParameterValues, selectedMonth]);
+
   const totalMonthlyCost = getNumberMapTotal(monthlyCostValues);
   const totalAdditionalIncome = getNumberMapTotal(additionalIncomeValues);
   const estimatedNet = getNetProfit(totalMonthlyCost, totalAdditionalIncome);
-  const [saveStatus, setSaveStatus] = useState("");
 
   async function saveParameters() {
-    setSaveStatus("Menyimpan parameter ke database...");
+    setSaveStatus(`Menyimpan parameter ${selectedMonth} ke database...`);
     const entries = [
       ...Object.entries(monthlyCostValues),
       ...Object.entries(additionalIncomeValues)
     ];
 
-    await Promise.all(
+    const responses = await Promise.all(
       entries.map(([parameterKey, amount]) =>
         fetch("/api/bootstrap", {
-          body: JSON.stringify({ amount, parameterKey }),
+          body: JSON.stringify({ amount, month: selectedMonth, parameterKey }),
           headers: { "Content-Type": "application/json" },
           method: "PATCH"
         })
       )
     );
 
-    setSaveStatus("Parameter tersimpan ke backend.");
+    if (responses.some((response) => !response.ok)) {
+      setSaveStatus(`Parameter ${selectedMonth} gagal disimpan.`);
+      return;
+    }
+
     await onSaved();
+    setSaveStatus(`Parameter ${selectedMonth} berhasil disimpan.`);
+  }
+
+  async function deleteIncomeParameter(parameterKey: string, name: string) {
+    const hasStoredValue = monthlyParameterValues?.some(
+      (value) =>
+        value.parameterKey === parameterKey && value.month === selectedMonth
+    );
+
+    if (!hasStoredValue) {
+      updateNumberMap(setAdditionalIncomeValues, parameterKey, 0);
+      setSaveStatus(`${name} ${selectedMonth} sudah kosong.`);
+      return;
+    }
+
+    setSaveStatus(`Menghapus ${name} untuk ${selectedMonth}...`);
+    const response = await fetch("/api/bootstrap", {
+      body: JSON.stringify({ month: selectedMonth, parameterKey }),
+      headers: { "Content-Type": "application/json" },
+      method: "DELETE"
+    });
+
+    if (!response.ok) {
+      setSaveStatus(`${name} ${selectedMonth} gagal dihapus.`);
+      return;
+    }
+
+    updateNumberMap(setAdditionalIncomeValues, parameterKey, 0);
+    await onSaved();
+    setSaveStatus(`${name} ${selectedMonth} berhasil dihapus.`);
   }
 
   return (
     <div className="space-y-6">
+      <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-lg font-black text-slate-950">Parameter per Bulan</h2>
+          <p className="text-sm text-slate-500">
+            Setiap periode disimpan terpisah dan tidak mengubah bulan lainnya.
+          </p>
+        </div>
+        <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white p-2">
+          <CalendarDays className="ml-1 size-4 text-yellow-600" />
+          <Select
+            className="min-w-[180px] border-0 shadow-none"
+            value={selectedMonth}
+            onChange={(event) => setSelectedMonth(event.target.value)}
+          >
+            {parameterMonths.map((month) => (
+              <option key={month}>{month}</option>
+            ))}
+          </Select>
+        </div>
+      </div>
+
       <div className="grid gap-4 md:grid-cols-3">
         <SummaryTile
           label="Total Biaya Bulanan"
@@ -3743,7 +3866,7 @@ function ParameterView({
         <CardHeader>
           <CardTitle>Parameter Biaya Bulanan</CardTitle>
           <CardDescription>
-            Komponen ini menjadi pengurang laba bersih bulanan.
+            Komponen pengurang laba bersih periode {selectedMonth}.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -3756,7 +3879,7 @@ function ParameterView({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {monthlyCostParameters.map((item) => (
+              {costParameters.map((item) => (
                 <TableRow key={item.key}>
                   <TableCell className="font-medium">{item.name}</TableCell>
                   <TableCell>
@@ -3769,7 +3892,7 @@ function ParameterView({
                     />
                   </TableCell>
                   <TableCell className="text-muted-foreground">
-                    {"note" in item && item.note ? item.note : "Pengurang laba bulanan"}
+                    {item.note || "Pengurang laba bulanan"}
                   </TableCell>
                 </TableRow>
               ))}
@@ -3789,7 +3912,7 @@ function ParameterView({
         <CardHeader>
           <CardTitle>Parameter Pendapatan Tambahan</CardTitle>
           <CardDescription>
-            Komponen ini menjadi penambah laba bersih bulanan.
+            Komponen penambah laba bersih periode {selectedMonth}.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -3799,10 +3922,11 @@ function ParameterView({
                 <TableHead>Parameter</TableHead>
                 <TableHead>Nominal</TableHead>
                 <TableHead>Keterangan</TableHead>
+                <TableHead className="w-28 text-center">Aksi</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {additionalIncomeParameters.map((item) => (
+              {incomeParameters.map((item) => (
                 <TableRow key={item.key}>
                   <TableCell className="font-medium">{item.name}</TableCell>
                   <TableCell>
@@ -3815,6 +3939,24 @@ function ParameterView({
                     />
                   </TableCell>
                   <TableCell className="text-muted-foreground">{item.note}</TableCell>
+                  <TableCell className="text-center">
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      disabled={
+                        (additionalIncomeValues[item.key] ?? 0) === 0 &&
+                        !monthlyParameterValues?.some(
+                          (value) =>
+                            value.parameterKey === item.key &&
+                            value.month === selectedMonth
+                        )
+                      }
+                      onClick={() => deleteIncomeParameter(item.key, item.name)}
+                    >
+                      <Trash2 />
+                      Hapus
+                    </Button>
+                  </TableCell>
                 </TableRow>
               ))}
               <TableRow>
@@ -3823,6 +3965,7 @@ function ParameterView({
                   {formatCurrency(totalAdditionalIncome)}
                 </TableCell>
                 <TableCell>Total penambah laba bersih</TableCell>
+                <TableCell />
               </TableRow>
             </TableBody>
           </Table>
@@ -3832,7 +3975,7 @@ function ParameterView({
       <StatusToast message={saveStatus} onDismiss={() => setSaveStatus("")} />
       <Button onClick={saveParameters}>
         <ShieldCheck />
-        Simpan Parameter
+        Simpan Parameter {selectedMonth}
       </Button>
     </div>
   );
@@ -4379,17 +4522,13 @@ function MaintenanceUserView({
 }
 
 function FinanceView({
-  additionalIncomeValues,
-  monthlyCostValues,
-  reports,
-  totalAdditionalIncome,
-  totalMonthlyCost
+  monthlyParameters,
+  monthlyParameterValues,
+  reports
 }: {
-  additionalIncomeValues: NumberMap;
-  monthlyCostValues: NumberMap;
+  monthlyParameters?: MonthlyParameterDefinition[];
+  monthlyParameterValues?: MonthlyParameterValue[];
   reports?: TransactionReportRow[];
-  totalAdditionalIncome: number;
-  totalMonthlyCost: number;
 }) {
   const reportRows = useMemo(() => reports ?? [], [reports]);
   const financeMonths = useMemo(() => {
@@ -4405,6 +4544,21 @@ function FinanceView({
       financeMonths.includes(current) ? current : nextMonth
     );
   }, [financeMonths, reportRows]);
+  const parameterDefinitions = getMonthlyParameterDefinitions(monthlyParameters);
+  const monthlyCostValues = getMonthlyParameterMap(
+    monthlyParameters,
+    monthlyParameterValues,
+    selectedMonth,
+    "cost"
+  );
+  const additionalIncomeValues = getMonthlyParameterMap(
+    monthlyParameters,
+    monthlyParameterValues,
+    selectedMonth,
+    "income"
+  );
+  const totalMonthlyCost = getNumberMapTotal(monthlyCostValues);
+  const totalAdditionalIncome = getNumberMapTotal(additionalIncomeValues);
   const monthReports = filterByMonth(reportRows, selectedMonth);
   const useFallbackFinance = reports === undefined;
   const salesReports = monthReports.filter((report) => report.type === "Penjualan");
@@ -4498,10 +4652,12 @@ function FinanceView({
     (sum, report) => sum + report.total,
     0
   );
-  const monthlyCostRows = monthlyCostParameters.map((item) => ({
+  const monthlyCostRows = parameterDefinitions
+    .filter((item) => item.type === "cost")
+    .map((item) => ({
     label: item.name,
     value: monthlyCostValues[item.key] ?? item.amount
-  }));
+    }));
   const operationalCostRows = expenseTransactionTotal
     ? [
         ...monthlyCostRows,

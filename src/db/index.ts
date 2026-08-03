@@ -120,6 +120,14 @@ async function createTables() {
       note TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS monthly_parameter_values (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      parameter_key TEXT NOT NULL REFERENCES monthly_parameters(key) ON DELETE CASCADE,
+      month TEXT NOT NULL,
+      amount INTEGER NOT NULL DEFAULT 0,
+      UNIQUE(parameter_key, month)
+    );
+
     CREATE TABLE IF NOT EXISTS daily_performance (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       date TEXT NOT NULL,
@@ -352,8 +360,38 @@ async function seedAppData() {
 
 let prepared: Promise<void> | null = null;
 
+async function migrateLegacyMonthlyParameters() {
+  const existingValues = await db.select().from(schema.monthlyParameterValues).limit(1).all();
+  if (existingValues.length) {
+    return;
+  }
+
+  const parameters = await db.select().from(schema.monthlyParameters).all();
+  if (!parameters.length) {
+    return;
+  }
+
+  const previousMonth = new Date();
+  previousMonth.setMonth(previousMonth.getMonth() - 1);
+  const month = new Intl.DateTimeFormat("id-ID", {
+    month: "long",
+    year: "numeric"
+  }).format(previousMonth);
+
+  await db.insert(schema.monthlyParameterValues)
+    .values(
+      parameters.map((parameter) => ({
+        amount: parameter.amount,
+        month,
+        parameterKey: parameter.key
+      }))
+    )
+    .onConflictDoNothing()
+    .run();
+}
+
 export function ensureDatabase() {
-  prepared ??= createTables().then(seedAppData);
+  prepared ??= createTables().then(seedAppData).then(migrateLegacyMonthlyParameters);
   return prepared;
 }
 
