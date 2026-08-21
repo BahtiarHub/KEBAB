@@ -90,7 +90,7 @@ type KioskKey = Exclude<LocationKey, "gudang">;
 type NumberMap = Record<string, number>;
 type UserRole = "Admin" | "Operator";
 type SavingsCategory =
-  | "Nabung Bulanan"
+  | "Tabungan"
   | "Uang Mamah"
   | "Uang Bapa"
   | "Persekot Kontrakan"
@@ -147,7 +147,7 @@ type SavingsTransactionRow = {
 };
 
 const savingsCategories: SavingsCategory[] = [
-  "Nabung Bulanan",
+  "Tabungan",
   "Uang Mamah",
   "Uang Bapa",
   "Persekot Kontrakan",
@@ -2947,7 +2947,7 @@ function SavingsInputView({
   rows: SavingsTransactionRow[];
 }) {
   const [amount, setAmount] = useState(0);
-  const [category, setCategory] = useState<SavingsCategory>("Nabung Bulanan");
+  const [category, setCategory] = useState<SavingsCategory | "">("");
   const [date, setDate] = useState("");
   const [direction, setDirection] = useState<"debit" | "credit">("credit");
   const [isSaving, setIsSaving] = useState(false);
@@ -2961,8 +2961,8 @@ function SavingsInputView({
     currentBalance + (direction === "credit" ? amount : -amount);
 
   async function saveSavings() {
-    if (!date || !note.trim() || amount <= 0) {
-      setSaveStatus("Tanggal, keterangan, dan nominal tabungan wajib diisi.");
+    if (!date || !category || !note.trim() || amount <= 0) {
+      setSaveStatus("Tanggal, kategori, keterangan, dan nominal tabungan wajib diisi.");
       return;
     }
 
@@ -2991,6 +2991,7 @@ function SavingsInputView({
 
       setSaveStatus("Tabungan berhasil disimpan ke database.");
       setAmount(0);
+      setCategory("");
       setNote("");
       setDate("");
       await onSaved();
@@ -3040,7 +3041,10 @@ function SavingsInputView({
                     ? "bg-emerald-600 text-white shadow-sm"
                     : "text-slate-600 hover:bg-white"
                 }`}
-                onClick={() => setDirection("credit")}
+                onClick={() => {
+                  setDirection("credit");
+                  setCategory("");
+                }}
                 type="button"
               >
                 <TrendingUp className="size-4" />
@@ -3052,7 +3056,10 @@ function SavingsInputView({
                     ? "bg-rose-600 text-white shadow-sm"
                     : "text-slate-600 hover:bg-white"
                 }`}
-                onClick={() => setDirection("debit")}
+                onClick={() => {
+                  setDirection("debit");
+                  setCategory("");
+                }}
                 type="button"
               >
                 <TrendingDown className="size-4" />
@@ -3067,16 +3074,19 @@ function SavingsInputView({
                 value={category}
                 onChange={(event) => setCategory(event.target.value as SavingsCategory)}
               >
+                <option value="" disabled>
+                  Pilih kategori dulu
+                </option>
                 {savingsCategories.map((item) => (
                   <option key={item}>{item}</option>
                 ))}
               </Select>
             </Field>
-            <Field label="Keterangan">
+            <Field label={direction === "debit" ? "Caption Transaksi Keluar" : "Keterangan"}>
               <Input
                 autoFocus
                 maxLength={120}
-                placeholder="Contoh: Nabung hasil penjualan"
+                placeholder={direction === "debit" ? "Contoh: Beli HP" : "Contoh: Tabungan hasil penjualan"}
                 value={note}
                 onChange={(event) => setNote(event.target.value)}
               />
@@ -3150,7 +3160,7 @@ function SavingsBalanceView({
   const [selectedYear, setSelectedYear] = useState(() => availableYears[0] ?? currentYear);
   const [selectedMonthIndex, setSelectedMonthIndex] = useState<number | null>(null);
   const [pendingEdit, setPendingEdit] = useState<SavingsTransactionRow | null>(null);
-  const [editCategory, setEditCategory] = useState<SavingsCategory>("Nabung Bulanan");
+  const [editCategory, setEditCategory] = useState<SavingsCategory | "">("");
   const [isEditing, setIsEditing] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<SavingsTransactionRow | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -3241,11 +3251,14 @@ function SavingsBalanceView({
 
   function beginEditSavingsTransaction(transaction: SavingsTransactionRow) {
     setPendingEdit(transaction);
-    setEditCategory(transaction.category);
+    setEditCategory(
+      transaction.category === "Belum Dikategorikan" ? "" : transaction.category
+    );
   }
 
   async function updateSavingsCategory() {
-    if (!pendingEdit) {
+    if (!pendingEdit || !editCategory) {
+      setDeleteStatus("Pilih kategori transaksi terlebih dahulu.");
       return;
     }
 
@@ -3534,6 +3547,9 @@ function SavingsBalanceView({
                   value={editCategory}
                   onChange={(event) => setEditCategory(event.target.value as SavingsCategory)}
                 >
+                  <option value="" disabled>
+                    Pilih kategori dulu
+                  </option>
                   {savingsCategories.map((item) => (
                     <option key={item}>{item}</option>
                   ))}

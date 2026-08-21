@@ -6,7 +6,7 @@ import * as schema from "@/db/schema";
 import { formatDateForReport } from "@/lib/date";
 
 const savingsCategories = [
-  "Nabung Bulanan",
+  "Tabungan",
   "Uang Mamah",
   "Uang Bapa",
   "Persekot Kontrakan",
@@ -33,18 +33,19 @@ export async function POST(request: Request) {
   };
   const note = body.note?.trim();
   const direction = body.direction ?? "credit";
-  const category = body.category ?? "Lainnya";
+  const category = body.category;
 
   if (
     !body.date ||
     !note ||
     typeof body.amount !== "number" ||
     body.amount <= 0 ||
+    !category ||
     !savingsCategories.includes(category as (typeof savingsCategories)[number]) ||
     !["debit", "credit"].includes(direction)
   ) {
     return NextResponse.json(
-      { error: "Tanggal, keterangan, dan nominal tabungan wajib diisi." },
+      { error: "Tanggal, kategori, keterangan, dan nominal tabungan wajib diisi." },
       { status: 400 }
     );
   }

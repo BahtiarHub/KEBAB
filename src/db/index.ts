@@ -183,6 +183,10 @@ async function createTables() {
       "ALTER TABLE savings_transactions ADD COLUMN category TEXT NOT NULL DEFAULT 'Belum Dikategorikan'"
     );
   }
+  await libsql.execute({
+    args: ["Tabungan", "Nabung Bulanan"],
+    sql: "UPDATE savings_transactions SET category = ? WHERE category = ?"
+  });
 }
 
 const locationSeed = [
