@@ -176,6 +176,7 @@ export const savingsTransactions = sqliteTable("savings_transactions", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   date: text("date").notNull(),
   note: text("note").notNull(),
+  category: text("category").notNull().default("Belum Dikategorikan"),
   amount: integer("amount").notNull(),
   direction: text("direction")
     .$type<"debit" | "credit">()

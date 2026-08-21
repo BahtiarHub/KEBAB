@@ -170,11 +170,19 @@ async function createTables() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       date TEXT NOT NULL,
       note TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'Belum Dikategorikan',
       amount INTEGER NOT NULL,
       direction TEXT NOT NULL DEFAULT 'credit',
       created_at INTEGER NOT NULL
     );
   `);
+
+  const savingsColumns = await libsql.execute("PRAGMA table_info(savings_transactions)");
+  if (!savingsColumns.rows.some((column) => column.name === "category")) {
+    await libsql.execute(
+      "ALTER TABLE savings_transactions ADD COLUMN category TEXT NOT NULL DEFAULT 'Belum Dikategorikan'"
+    );
+  }
 }
 
 const locationSeed = [

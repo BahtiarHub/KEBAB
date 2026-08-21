@@ -5,6 +5,15 @@ import { db, ensureDatabase } from "@/db";
 import * as schema from "@/db/schema";
 import { formatDateForReport } from "@/lib/date";
 
+const savingsCategories = [
+  "Nabung Bulanan",
+  "Uang Mamah",
+  "Uang Bapa",
+  "Persekot Kontrakan",
+  "Lainnya",
+  "Belum Dikategorikan"
+] as const;
+
 export async function GET() {
   await ensureDatabase();
 
@@ -17,18 +26,21 @@ export async function POST(request: Request) {
 
   const body = (await request.json()) as {
     amount?: number;
+    category?: string;
     date?: string;
     direction?: "debit" | "credit";
     note?: string;
   };
   const note = body.note?.trim();
   const direction = body.direction ?? "credit";
+  const category = body.category ?? "Lainnya";
 
   if (
     !body.date ||
     !note ||
     typeof body.amount !== "number" ||
     body.amount <= 0 ||
+    !savingsCategories.includes(category as (typeof savingsCategories)[number]) ||
     !["debit", "credit"].includes(direction)
   ) {
     return NextResponse.json(
@@ -56,11 +68,44 @@ export async function POST(request: Request) {
   await db.insert(schema.savingsTransactions)
     .values({
       amount: Math.round(body.amount),
+      category,
       createdAt: new Date(),
       date: formatDateForReport(body.date),
       direction,
       note
     })
+    .run();
+
+  return NextResponse.json({ ok: true });
+}
+
+export async function PATCH(request: Request) {
+  await ensureDatabase();
+
+  const body = (await request.json()) as { category?: string; id?: number };
+
+  if (
+    !Number.isInteger(body.id) ||
+    Number(body.id) <= 0 ||
+    !body.category ||
+    !savingsCategories.includes(body.category as (typeof savingsCategories)[number])
+  ) {
+    return NextResponse.json({ error: "Data kategori tabungan tidak valid." }, { status: 400 });
+  }
+
+  const transaction = await db
+    .select({ id: schema.savingsTransactions.id })
+    .from(schema.savingsTransactions)
+    .where(eq(schema.savingsTransactions.id, Number(body.id)))
+    .get();
+
+  if (!transaction) {
+    return NextResponse.json({ error: "Transaksi tabungan tidak ditemukan." }, { status: 404 });
+  }
+
+  await db.update(schema.savingsTransactions)
+    .set({ category: body.category })
+    .where(eq(schema.savingsTransactions.id, transaction.id))
     .run();
 
   return NextResponse.json({ ok: true });

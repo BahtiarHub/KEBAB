@@ -89,6 +89,13 @@ type LocationKey = "gudang" | "wadas" | "ciherang" | "bubulak";
 type KioskKey = Exclude<LocationKey, "gudang">;
 type NumberMap = Record<string, number>;
 type UserRole = "Admin" | "Operator";
+type SavingsCategory =
+  | "Nabung Bulanan"
+  | "Uang Mamah"
+  | "Uang Bapa"
+  | "Persekot Kontrakan"
+  | "Lainnya"
+  | "Belum Dikategorikan";
 type MonthlyParameterDefinition = {
   amount: number;
   key: string;
@@ -131,12 +138,21 @@ type BackendBootstrap = {
 
 type SavingsTransactionRow = {
   amount: number;
+  category: SavingsCategory;
   createdAt: string;
   date: string;
   direction: "debit" | "credit";
   id: number;
   note: string;
 };
+
+const savingsCategories: SavingsCategory[] = [
+  "Nabung Bulanan",
+  "Uang Mamah",
+  "Uang Bapa",
+  "Persekot Kontrakan",
+  "Lainnya"
+];
 
 type DailyPerformanceRow = {
   date: string;
@@ -2931,6 +2947,7 @@ function SavingsInputView({
   rows: SavingsTransactionRow[];
 }) {
   const [amount, setAmount] = useState(0);
+  const [category, setCategory] = useState<SavingsCategory>("Nabung Bulanan");
   const [date, setDate] = useState("");
   const [direction, setDirection] = useState<"debit" | "credit">("credit");
   const [isSaving, setIsSaving] = useState(false);
@@ -2959,7 +2976,7 @@ function SavingsInputView({
 
     try {
       const response = await fetch("/api/savings", {
-        body: JSON.stringify({ amount, date, direction, note }),
+        body: JSON.stringify({ amount, category, date, direction, note }),
         headers: { "Content-Type": "application/json" },
         method: "POST"
       });
@@ -3044,7 +3061,17 @@ function SavingsInputView({
             </div>
           </Field>
 
-          <div className="grid gap-5 md:grid-cols-2">
+          <div className="grid gap-5 md:grid-cols-3">
+            <Field label="Kategori">
+              <Select
+                value={category}
+                onChange={(event) => setCategory(event.target.value as SavingsCategory)}
+              >
+                {savingsCategories.map((item) => (
+                  <option key={item}>{item}</option>
+                ))}
+              </Select>
+            </Field>
             <Field label="Keterangan">
               <Input
                 autoFocus
@@ -3122,6 +3149,9 @@ function SavingsBalanceView({
   }, [currentYear, rows]);
   const [selectedYear, setSelectedYear] = useState(() => availableYears[0] ?? currentYear);
   const [selectedMonthIndex, setSelectedMonthIndex] = useState<number | null>(null);
+  const [pendingEdit, setPendingEdit] = useState<SavingsTransactionRow | null>(null);
+  const [editCategory, setEditCategory] = useState<SavingsCategory>("Nabung Bulanan");
+  const [isEditing, setIsEditing] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<SavingsTransactionRow | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteStatus, setDeleteStatus] = useState("");
@@ -3190,6 +3220,63 @@ function SavingsBalanceView({
   }, [rows, selectedYear]);
   const selectedMonth =
     selectedMonthIndex === null ? null : summary.months[selectedMonthIndex];
+  const categoryBalances = useMemo(() => {
+    const visibleCategories = [
+      ...savingsCategories,
+      ...(rows.some((row) => row.category === "Belum Dikategorikan")
+        ? (["Belum Dikategorikan"] as SavingsCategory[])
+        : [])
+    ];
+
+    return visibleCategories.map((category) => ({
+      category,
+      value: rows
+        .filter((row) => row.category === category)
+        .reduce(
+          (total, row) => total + (row.direction === "credit" ? row.amount : -row.amount),
+          0
+        )
+    }));
+  }, [rows]);
+
+  function beginEditSavingsTransaction(transaction: SavingsTransactionRow) {
+    setPendingEdit(transaction);
+    setEditCategory(transaction.category);
+  }
+
+  async function updateSavingsCategory() {
+    if (!pendingEdit) {
+      return;
+    }
+
+    setIsEditing(true);
+    setDeleteStatus("Menyimpan kategori transaksi...");
+
+    try {
+      const response = await fetch("/api/savings", {
+        body: JSON.stringify({ category: editCategory, id: pendingEdit.id }),
+        headers: { "Content-Type": "application/json" },
+        method: "PATCH"
+      });
+
+      if (!response.ok) {
+        const result = (await response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        setDeleteStatus(result?.error ?? "Kategori transaksi gagal disimpan.");
+        return;
+      }
+
+      const editedNote = pendingEdit.note;
+      setPendingEdit(null);
+      await onChanged();
+      setDeleteStatus(`Kategori transaksi ${editedNote} berhasil diperbarui.`);
+    } catch {
+      setDeleteStatus("Kategori transaksi gagal disimpan. Periksa koneksi aplikasi.");
+    } finally {
+      setIsEditing(false);
+    }
+  }
 
   async function deleteSavingsTransaction() {
     if (!pendingDelete) {
@@ -3253,6 +3340,29 @@ function SavingsBalanceView({
             <SummaryTile label="Total Debet" value={formatCurrency(summary.debit)} />
             <SummaryTile label="Total Kredit" value={formatCurrency(summary.credit)} />
             <SummaryTile label="Saldo Akhir" value={formatCurrency(summary.balance)} strong />
+          </div>
+
+          <div>
+            <p className="mb-3 text-xs font-black uppercase text-slate-500">
+              Saldo per Kategori
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {categoryBalances.map((item) => (
+                <div
+                  key={item.category}
+                  className={`rounded-lg border p-3 ${
+                    item.category === "Belum Dikategorikan"
+                      ? "border-amber-300 bg-amber-50"
+                      : "border-slate-200 bg-white"
+                  }`}
+                >
+                  <p className="text-xs font-bold text-slate-500">{item.category}</p>
+                  <p className="mt-1 text-base font-black text-slate-950">
+                    {formatCurrency(item.value)}
+                  </p>
+                </div>
+              ))}
+            </div>
           </div>
 
           <Table>
@@ -3329,6 +3439,7 @@ function SavingsBalanceView({
               <TableRow>
                 <TableHead>Tanggal</TableHead>
                 <TableHead>Uraian</TableHead>
+                <TableHead>Kategori</TableHead>
                 <TableHead>Jenis</TableHead>
                 <TableHead className="text-right">Debet</TableHead>
                 <TableHead className="text-right">Kredit</TableHead>
@@ -3342,6 +3453,17 @@ function SavingsBalanceView({
                   <TableCell className="min-w-[180px] font-medium">
                     {transaction.note}
                   </TableCell>
+                  <TableCell className="whitespace-nowrap">
+                    <Badge
+                      variant={
+                        transaction.category === "Belum Dikategorikan"
+                          ? "warning"
+                          : "outline"
+                      }
+                    >
+                      {transaction.category}
+                    </Badge>
+                  </TableCell>
                   <TableCell>
                     <Badge variant={transaction.direction === "credit" ? "success" : "danger"}>
                       {transaction.direction === "credit" ? "Kredit" : "Debet"}
@@ -3354,21 +3476,85 @@ function SavingsBalanceView({
                     {transaction.direction === "credit" ? formatNumber(transaction.amount) : "-"}
                   </TableCell>
                   <TableCell className="text-center">
-                    <Button
-                      aria-label={`Hapus transaksi ${transaction.note}`}
-                      size="sm"
-                      variant="destructive"
-                      onClick={() => setPendingDelete(transaction)}
-                    >
-                      <Trash2 />
-                      Hapus
-                    </Button>
+                    <div className="flex justify-center gap-2">
+                      <Button
+                        aria-label={`Edit kategori transaksi ${transaction.note}`}
+                        size="sm"
+                        variant="outline"
+                        onClick={() => beginEditSavingsTransaction(transaction)}
+                      >
+                        <Pencil />
+                        Edit
+                      </Button>
+                      <Button
+                        aria-label={`Hapus transaksi ${transaction.note}`}
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => setPendingDelete(transaction)}
+                      >
+                        <Trash2 />
+                        Hapus
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         </DetailDrawer>
+      ) : null}
+
+      {pendingEdit ? (
+        <div className="fixed inset-0 z-[100] grid place-items-center px-4" role="dialog" aria-modal="true">
+          <button
+            aria-label="Batal edit kategori"
+            className="absolute inset-0 bg-slate-950/50 backdrop-blur-sm"
+            onClick={() => setPendingEdit(null)}
+          />
+          <Card className="relative w-full max-w-md border-yellow-300 shadow-2xl">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Pencil className="size-5 text-yellow-600" />
+                Edit Kategori Tabungan
+              </CardTitle>
+              <CardDescription>
+                Masukkan transaksi lama ke kategori tabungan yang sesuai.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <p className="font-bold text-slate-950">{pendingEdit.note}</p>
+                <p className="mt-1 text-sm text-slate-500">{pendingEdit.date}</p>
+                <p className="mt-2 text-lg font-black text-slate-950">
+                  {formatCurrency(pendingEdit.amount)}
+                </p>
+              </div>
+              <Field label="Kategori">
+                <Select
+                  value={editCategory}
+                  onChange={(event) => setEditCategory(event.target.value as SavingsCategory)}
+                >
+                  {savingsCategories.map((item) => (
+                    <option key={item}>{item}</option>
+                  ))}
+                </Select>
+              </Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Button
+                  disabled={isEditing}
+                  variant="outline"
+                  onClick={() => setPendingEdit(null)}
+                >
+                  Batal
+                </Button>
+                <Button disabled={isEditing} onClick={updateSavingsCategory}>
+                  {isEditing ? <RefreshCw className="animate-spin" /> : <Check />}
+                  {isEditing ? "Menyimpan..." : "Simpan Kategori"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       ) : null}
 
       {pendingDelete ? (
