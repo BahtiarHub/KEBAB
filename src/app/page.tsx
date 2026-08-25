@@ -3,6 +3,7 @@
 import Image from "next/image";
 import {
   Archive,
+  ArrowLeftRight,
   CalendarDays,
   Calculator,
   Check,
@@ -77,6 +78,7 @@ type View =
   | "Maintenance User"
   | "Input Tabungan"
   | "Saldo Tabungan"
+  | "Mutasi Stok"
   | "Monitoring Stok";
 
 type ReportType =
@@ -716,6 +718,12 @@ function formatNumber(value: number) {
 
 function getTodayInputDate() {
   return new Date().toLocaleDateString("en-CA");
+}
+
+function addDaysToInputDate(inputDate: string, days: number) {
+  const date = new Date(`${inputDate}T12:00:00`);
+  date.setDate(date.getDate() + days);
+  return date.toLocaleDateString("en-CA");
 }
 
 function getTodayDisplayDate() {
@@ -1444,6 +1452,13 @@ export default function Home() {
                 label="Monitoring Stok"
                 onClick={() => setActiveView("Monitoring Stok")}
               />
+              <NavButton
+                active={activeView === "Mutasi Stok"}
+                collapsed={sidebarCollapsed}
+                icon={ArrowLeftRight}
+                label="Mutasi Stok"
+                onClick={() => setActiveView("Mutasi Stok")}
+              />
               {currentRole === "Admin" ? (
                 <>
                   <NavSectionLabel collapsed={sidebarCollapsed} label="Administrasi" />
@@ -1585,6 +1600,9 @@ export default function Home() {
             ) : null}
             {activeView === "Monitoring Stok" ? (
               <StockView materials={appMaterials} />
+            ) : null}
+            {activeView === "Mutasi Stok" ? (
+              <StockMutationView materials={appMaterials} />
             ) : null}
             {activeView === "Input Tabungan" ? (
               <SavingsInputView
@@ -5131,6 +5149,286 @@ function StockView({ materials }: { materials: Material[] }) {
   );
 }
 
+type StockMutationApiResponse = {
+  material: { code: string; name: string };
+  location: { key: KioskKey; name: string };
+  period: { days: number; endDate: string; startDate: string };
+  reconciliation: {
+    difference: number | null;
+    label: string;
+    number: string | null;
+    opnameDate: string | null;
+    status: "danger" | "success" | "warning";
+  };
+  rows: Array<{
+    balance: number;
+    date: string;
+    inQty: number;
+    note: string;
+    number: string;
+    outQty: number;
+    source: "Distribusi" | "Penjualan" | "Opname";
+  }>;
+  summary: {
+    currentStock: number;
+    endingStock: number;
+    openingStock: number;
+    totalIn: number;
+    totalOut: number;
+  };
+};
+
+function StockMutationView({ materials }: { materials: Material[] }) {
+  const today = getTodayInputDate();
+  const [data, setData] = useState<StockMutationApiResponse | null>(null);
+  const [endDate, setEndDate] = useState(today);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [selectedKiosk, setSelectedKiosk] = useState<KioskKey>("wadas");
+  const [selectedMaterialCode, setSelectedMaterialCode] = useState(materials[0]?.code ?? "");
+  const [startDate, setStartDate] = useState(() => addDaysToInputDate(today, -6));
+  const selectedMaterial =
+    materials.find((material) => material.code === selectedMaterialCode) ?? materials[0];
+  const selectedLocation = kiosks.find((kiosk) => kiosk.key === selectedKiosk) ?? kiosks[0];
+
+  useEffect(() => {
+    if (selectedMaterial && !materials.some((material) => material.code === selectedMaterialCode)) {
+      setSelectedMaterialCode(selectedMaterial.code);
+    }
+  }, [materials, selectedMaterial, selectedMaterialCode]);
+
+  useEffect(() => {
+    if (!selectedMaterialCode || !startDate || !endDate) {
+      return;
+    }
+
+    const controller = new AbortController();
+    const searchParams = new URLSearchParams({
+      endDate,
+      locationKey: selectedKiosk,
+      materialCode: selectedMaterialCode,
+      startDate
+    });
+
+    async function loadStockMutations() {
+      setIsLoading(true);
+      setData(null);
+      setErrorMessage("");
+      try {
+        const response = await fetch(`/api/stock-mutations?${searchParams.toString()}`, {
+          cache: "no-store",
+          signal: controller.signal
+        });
+        const result = (await response.json()) as StockMutationApiResponse & { error?: string };
+        if (!response.ok) {
+          setData(null);
+          setErrorMessage(result.error ?? "Mutasi stok gagal dimuat.");
+          return;
+        }
+        setData(result);
+      } catch (error) {
+        if ((error as Error).name !== "AbortError") {
+          setData(null);
+          setErrorMessage("Mutasi stok gagal dimuat. Periksa koneksi aplikasi.");
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    void loadStockMutations();
+    return () => controller.abort();
+  }, [endDate, selectedKiosk, selectedMaterialCode, startDate]);
+
+  function changeStartDate(value: string) {
+    setStartDate(value);
+    if (value > endDate) {
+      setEndDate(value);
+      return;
+    }
+    if (endDate > addDaysToInputDate(value, 6)) {
+      setEndDate(addDaysToInputDate(value, 6));
+    }
+  }
+
+  function changeEndDate(value: string) {
+    setEndDate(value);
+    if (value < startDate || value > addDaysToInputDate(startDate, 6)) {
+      setStartDate(addDaysToInputDate(value, -6));
+    }
+  }
+
+  const summary = data?.summary ?? {
+    currentStock: 0,
+    endingStock: 0,
+    openingStock: 0,
+    totalIn: 0,
+    totalOut: 0
+  };
+  const periodMovements = data?.rows ?? [];
+  const balanceStatus = data?.reconciliation
+    ? {
+        ...data.reconciliation,
+        label:
+          data.reconciliation.difference === null
+            ? "Belum Dicek"
+            : data.reconciliation.difference === 0
+              ? "Sesuai"
+              : `Selisih ${formatNumber(data.reconciliation.difference)}`
+      }
+    : {
+        difference: null,
+        label: "Belum Dicek",
+        number: null,
+        opnameDate: null,
+        status: "warning" as const
+      };
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader className="bg-gradient-to-r from-yellow-50 to-white">
+          <CardTitle className="flex items-center gap-2">
+            <ArrowLeftRight className="size-5 text-yellow-600" />
+            Filter Mutasi Stok
+          </CardTitle>
+          <CardDescription>
+            Pilih periode maksimal tujuh hari, kios, dan satu bahan baku.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 pt-5 sm:grid-cols-2 xl:grid-cols-4">
+          <Field label="Tanggal Mulai">
+            <Input
+              max={endDate}
+              type="date"
+              value={startDate}
+              onChange={(event) => changeStartDate(event.target.value)}
+            />
+          </Field>
+          <Field label="Tanggal Selesai">
+            <Input
+              max={today < addDaysToInputDate(startDate, 6) ? today : addDaysToInputDate(startDate, 6)}
+              min={startDate}
+              type="date"
+              value={endDate}
+              onChange={(event) => changeEndDate(event.target.value)}
+            />
+          </Field>
+          <Field label="Kios">
+            <Select
+              value={selectedKiosk}
+              onChange={(event) => setSelectedKiosk(event.target.value as KioskKey)}
+            >
+              {kiosks.map((kiosk) => (
+                <option key={kiosk.key} value={kiosk.key}>{kiosk.name}</option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Bahan Baku">
+            <Select
+              value={selectedMaterial?.code ?? ""}
+              onChange={(event) => setSelectedMaterialCode(event.target.value)}
+            >
+              {materials.map((material) => (
+                <option key={material.code} value={material.code}>{material.name}</option>
+              ))}
+            </Select>
+          </Field>
+        </CardContent>
+      </Card>
+
+      {errorMessage ? (
+        <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
+          {errorMessage}
+        </div>
+      ) : null}
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <SummaryTile label="Stok Awal" value={formatNumber(summary.openingStock)} />
+        <SummaryTile label="Stok Masuk" value={formatNumber(summary.totalIn)} />
+        <SummaryTile label="Stok Keluar" value={formatNumber(summary.totalOut)} />
+        <SummaryTile label="Stok Akhir" value={formatNumber(summary.endingStock)} />
+        <Card className="border-yellow-200 bg-yellow-50">
+          <CardContent className="flex h-full min-h-24 flex-col justify-center p-4">
+            <p className="text-xs font-bold uppercase text-slate-500">Kesesuaian Opname</p>
+            <div className="mt-2"><Badge variant={balanceStatus.status}>{balanceStatus.label}</Badge></div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <CardTitle>
+              {data?.material.name ?? selectedMaterial?.name ?? "Bahan Baku"} - {data?.location.name ?? selectedLocation?.name}
+            </CardTitle>
+            <CardDescription>Saldo berjalan berdasarkan transaksi pada periode terpilih.</CardDescription>
+          </div>
+          <Badge variant={isLoading ? "warning" : "outline"}>
+            {isLoading ? "Memuat data..." : "Maksimal 7 hari"}
+          </Badge>
+        </CardHeader>
+        <CardContent className="p-0">
+          <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Tanggal</TableHead>
+                  <TableHead>Sumber</TableHead>
+                  <TableHead>Nomor Transaksi</TableHead>
+                  <TableHead>Keterangan</TableHead>
+                  <TableHead className="text-right">Masuk</TableHead>
+                  <TableHead className="text-right">Keluar</TableHead>
+                  <TableHead className="text-right">Saldo</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableRow>
+                  <TableCell className="font-semibold">{startDate}</TableCell>
+                  <TableCell><Badge variant="secondary">Saldo Awal</Badge></TableCell>
+                  <TableCell>-</TableCell>
+                  <TableCell>Stok sebelum periode dimulai</TableCell>
+                  <TableCell className="text-right">-</TableCell>
+                  <TableCell className="text-right">-</TableCell>
+                  <TableCell className="text-right font-black">{formatNumber(summary.openingStock)}</TableCell>
+                </TableRow>
+                {periodMovements.map((movement, index) => (
+                  <TableRow key={`${movement.number}-${index}`}>
+                    <TableCell className="whitespace-nowrap font-semibold">{movement.date}</TableCell>
+                    <TableCell>
+                      <Badge variant={movement.source === "Opname" ? "warning" : "outline"}>
+                        {movement.source}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap font-mono text-xs">{movement.number}</TableCell>
+                    <TableCell className="min-w-56">{movement.note}</TableCell>
+                    <TableCell className="text-right font-bold text-emerald-700">
+                      {movement.inQty ? `+${formatNumber(movement.inQty)}` : "-"}
+                    </TableCell>
+                    <TableCell className="text-right font-bold text-rose-700">
+                      {movement.outQty ? `-${formatNumber(movement.outQty)}` : "-"}
+                    </TableCell>
+                    <TableCell className="text-right font-black">{formatNumber(movement.balance)}</TableCell>
+                  </TableRow>
+                ))}
+                {!periodMovements.length ? (
+                  <TableRow>
+                    <TableCell className="h-40 text-center text-slate-500" colSpan={7}>
+                      {isLoading
+                        ? "Memuat mutasi stok dari database..."
+                        : "Tidak ada mutasi untuk bahan, kios, dan periode yang dipilih."}
+                    </TableCell>
+                  </TableRow>
+                ) : null}
+              </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 function StockOpnameView({
   materials,
   onSaved
@@ -6560,6 +6858,7 @@ function MobileSelect({
       ))}
       <option value="Neraca Keuangan">Neraca Keuangan</option>
       <option value="Monitoring Stok">Monitoring Stok</option>
+      <option value="Mutasi Stok">Mutasi Stok</option>
       {currentRole === "Admin" ? (
         <>
           <option value="Parameter">Parameter</option>
