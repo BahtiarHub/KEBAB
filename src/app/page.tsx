@@ -3956,14 +3956,22 @@ function ParameterView({
     const months = new Set([
       ...monthOptions,
       ...getAvailableMonths(reports ?? []),
+      ...(monthlyParameterValues?.map((value) => value.month) ?? []),
       getCurrentMonthLabel()
     ]);
     return Array.from(months).sort(compareMonthLabels);
-  }, [reports]);
+  }, [monthlyParameterValues, reports]);
   const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthLabel);
   const [monthlyCostValues, setMonthlyCostValues] = useState<NumberMap>({});
   const [additionalIncomeValues, setAdditionalIncomeValues] = useState<NumberMap>({});
+  const [isEditingIncome, setIsEditingIncome] = useState(false);
+  const [isSavingIncome, setIsSavingIncome] = useState(false);
   const [saveStatus, setSaveStatus] = useState("");
+  const storedIncomeValues = monthlyParameterValues?.filter(
+    (value) =>
+      value.month === selectedMonth &&
+      incomeParameters.some((parameter) => parameter.key === value.parameterKey)
+  ) ?? [];
 
   useEffect(() => {
     setMonthlyCostValues(
@@ -3982,6 +3990,7 @@ function ParameterView({
         "income"
       )
     );
+    setIsEditingIncome(false);
   }, [monthlyParameters, monthlyParameterValues, selectedMonth]);
 
   const totalMonthlyCost = getNumberMapTotal(monthlyCostValues);
@@ -3990,10 +3999,7 @@ function ParameterView({
 
   async function saveParameters() {
     setSaveStatus(`Menyimpan parameter ${selectedMonth} ke database...`);
-    const entries = [
-      ...Object.entries(monthlyCostValues),
-      ...Object.entries(additionalIncomeValues)
-    ];
+    const entries = Object.entries(monthlyCostValues);
 
     const responses = await Promise.all(
       entries.map(([parameterKey, amount]) =>
@@ -4011,7 +4017,41 @@ function ParameterView({
     }
 
     await onSaved();
-    setSaveStatus(`Parameter ${selectedMonth} berhasil disimpan.`);
+    setSaveStatus(`Biaya parameter ${selectedMonth} berhasil disimpan.`);
+  }
+
+  async function saveIncomeParameter(parameterKey: string, name: string) {
+    const amount = additionalIncomeValues[parameterKey] ?? 0;
+    setIsSavingIncome(true);
+    setSaveStatus(`Menyimpan ${name} untuk ${selectedMonth}...`);
+
+    try {
+      const response = await fetch("/api/bootstrap", {
+        body: JSON.stringify({ amount, month: selectedMonth, parameterKey }),
+        headers: { "Content-Type": "application/json" },
+        method: "PATCH"
+      });
+
+      if (!response.ok) {
+        setSaveStatus(`${name} ${selectedMonth} gagal disimpan.`);
+        return;
+      }
+
+      await onSaved();
+      setIsEditingIncome(false);
+      setSaveStatus(`${name} ${selectedMonth} berhasil disimpan.`);
+    } finally {
+      setIsSavingIncome(false);
+    }
+  }
+
+  function cancelIncomeEdit(parameterKey: string) {
+    const storedValue = monthlyParameterValues?.find(
+      (value) =>
+        value.parameterKey === parameterKey && value.month === selectedMonth
+    );
+    updateNumberMap(setAdditionalIncomeValues, parameterKey, storedValue?.amount ?? 0);
+    setIsEditingIncome(false);
   }
 
   async function deleteIncomeParameter(parameterKey: string, name: string) {
@@ -4040,6 +4080,7 @@ function ParameterView({
 
     updateNumberMap(setAdditionalIncomeValues, parameterKey, 0);
     await onSaved();
+    setIsEditingIncome(false);
     setSaveStatus(`${name} ${selectedMonth} berhasil dihapus.`);
   }
 
@@ -4129,58 +4170,120 @@ function ParameterView({
       </Card>
 
       <Card>
-        <CardHeader>
-          <CardTitle>Parameter Pendapatan Tambahan</CardTitle>
-          <CardDescription>
-            Komponen penambah laba bersih periode {selectedMonth}.
-          </CardDescription>
+        <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <CardTitle>Parameter Pendapatan Tambahan</CardTitle>
+            <CardDescription>
+              Pendapatan BRILINK disimpan berdasarkan bulan yang dipilih, bukan tanggal pengisian.
+            </CardDescription>
+          </div>
+          <div className="flex items-center gap-2 rounded-lg border border-yellow-200 bg-yellow-50 p-2">
+            <CalendarDays className="ml-1 size-4 text-yellow-700" />
+            <Select
+              aria-label="Bulan pendapatan BRILINK"
+              className="min-w-[180px] border-0 bg-transparent shadow-none"
+              value={selectedMonth}
+              onChange={(event) => setSelectedMonth(event.target.value)}
+            >
+              {parameterMonths.map((month) => (
+                <option key={month}>{month}</option>
+              ))}
+            </Select>
+          </div>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Parameter</TableHead>
+                <TableHead>Bulan</TableHead>
                 <TableHead>Nominal</TableHead>
                 <TableHead>Keterangan</TableHead>
-                <TableHead className="w-28 text-center">Aksi</TableHead>
+                <TableHead className="min-w-48 text-center">Aksi</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {incomeParameters.map((item) => (
-                <TableRow key={item.key}>
-                  <TableCell className="font-medium">{item.name}</TableCell>
-                  <TableCell>
-                    <NumberInput
-                      className="w-36"
-                      value={additionalIncomeValues[item.key] ?? 0}
-                      onValueChange={(value) =>
-                        updateNumberMap(setAdditionalIncomeValues, item.key, value)
-                      }
-                    />
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">{item.note}</TableCell>
-                  <TableCell className="text-center">
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      disabled={
-                        (additionalIncomeValues[item.key] ?? 0) === 0 &&
-                        !monthlyParameterValues?.some(
-                          (value) =>
-                            value.parameterKey === item.key &&
-                            value.month === selectedMonth
-                        )
-                      }
-                      onClick={() => deleteIncomeParameter(item.key, item.name)}
-                    >
-                      <Trash2 />
-                      Hapus
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {incomeParameters.map((item) => {
+                const storedValue = storedIncomeValues.find(
+                  (value) => value.parameterKey === item.key
+                );
+                const canEdit = !storedValue || isEditingIncome;
+
+                return (
+                  <TableRow key={item.key}>
+                    <TableCell className="font-medium">{item.name}</TableCell>
+                    <TableCell>
+                      <Badge variant={storedValue ? "success" : "warning"}>
+                        {selectedMonth}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <NumberInput
+                        className="w-40"
+                        disabled={!canEdit}
+                        value={additionalIncomeValues[item.key] ?? 0}
+                        onValueChange={(value) =>
+                          updateNumberMap(setAdditionalIncomeValues, item.key, value)
+                        }
+                      />
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {storedValue
+                        ? `Tersimpan untuk ${selectedMonth}`
+                        : `Belum ada data untuk ${selectedMonth}`}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex justify-center gap-2">
+                        {storedValue && !isEditingIncome ? (
+                          <>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setIsEditingIncome(true)}
+                            >
+                              <Pencil />
+                              Edit
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={() => deleteIncomeParameter(item.key, item.name)}
+                            >
+                              <Trash2 />
+                              Hapus
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            {storedValue ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={isSavingIncome}
+                                onClick={() => cancelIncomeEdit(item.key)}
+                              >
+                                <X />
+                                Batal
+                              </Button>
+                            ) : null}
+                            <Button
+                              size="sm"
+                              disabled={isSavingIncome}
+                              onClick={() => saveIncomeParameter(item.key, item.name)}
+                            >
+                              {isSavingIncome ? <RefreshCw className="animate-spin" /> : <Check />}
+                              {storedValue ? "Simpan Perubahan" : "Simpan"}
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
               <TableRow>
                 <TableCell className="font-bold">TOTAL PENDAPATAN TAMBAHAN</TableCell>
+                <TableCell>{selectedMonth}</TableCell>
                 <TableCell className="font-bold text-emerald-700">
                   {formatCurrency(totalAdditionalIncome)}
                 </TableCell>
@@ -4195,7 +4298,7 @@ function ParameterView({
       <StatusToast message={saveStatus} onDismiss={() => setSaveStatus("")} />
       <Button onClick={saveParameters}>
         <ShieldCheck />
-        Simpan Parameter {selectedMonth}
+        Simpan Biaya Parameter {selectedMonth}
       </Button>
     </div>
   );
@@ -6872,16 +6975,19 @@ function MobileSelect({
 
 function NumberInput({
   className,
+  disabled = false,
   onValueChange,
   value
 }: {
   className?: string;
+  disabled?: boolean;
   onValueChange: (value: number) => void;
   value: number;
 }) {
   return (
     <Input
       className={className}
+      disabled={disabled}
       inputMode="numeric"
       value={formatNumber(value)}
       onChange={(event) => onValueChange(toNumber(event.target.value))}
