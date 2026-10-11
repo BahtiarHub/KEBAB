@@ -4,6 +4,8 @@ out
 dist
 data/*.sqlite
 data/*.sqlite-*
+data/backups/
+tests/.tmp/
 .env*.local
 .env
 npm-debug.log*

@@ -4,8 +4,11 @@ import { NextResponse } from "next/server";
 import { databaseSource, db, ensureDatabase } from "@/db";
 import * as schema from "@/db/schema";
 import { ensureAuthSeed } from "@/lib/auth";
+import { accessResponse } from "@/lib/api-access";
 
-export async function GET() {
+export async function GET(request: Request) {
+  const denied = await accessResponse(request);
+  if (denied) return denied;
   await ensureDatabase();
   await ensureAuthSeed();
 
@@ -78,6 +81,8 @@ export async function GET() {
 }
 
 export async function PATCH(request: Request) {
+  const denied = await accessResponse(request, true);
+  if (denied) return denied;
   await ensureDatabase();
 
   const body = (await request.json()) as {
@@ -125,6 +130,8 @@ export async function PATCH(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const denied = await accessResponse(request, true);
+  if (denied) return denied;
   await ensureDatabase();
 
   const body = (await request.json()) as {

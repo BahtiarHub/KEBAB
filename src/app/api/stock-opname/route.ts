@@ -1,59 +1,19 @@
-import { and, eq } from "drizzle-orm";
-import { NextResponse } from "next/server";
-
-import { db, ensureDatabase } from "@/db";
 import * as schema from "@/db/schema";
-import { formatDateForReport } from "@/lib/date";
-
-type OpnameItem = {
-  materialCode: string;
-  materialName: string;
-  physicalStock: number;
-  systemStock: number;
-};
+import { ApiError } from "@/lib/api-access";
+import { integer, items, resolveItems, resolveLocation, stockPost, writeStock } from "@/lib/stock-write";
 
 export async function POST(request: Request) {
-  await ensureDatabase();
-
-  const body = (await request.json()) as {
-    date?: string;
-    items?: OpnameItem[];
-    locationKey?: string;
-    locationName?: string;
-    officer?: string;
-  };
-
-  if (!body.locationKey || !body.locationName || !Array.isArray(body.items)) {
-    return NextResponse.json({ error: "Invalid opname payload" }, { status: 400 });
-  }
-
-  const number = `OPN-${Date.now()}`;
-  const date = formatDateForReport(body.date);
-
-  for (const item of body.items) {
-    await db.update(schema.stockBalances)
-      .set({ qty: item.physicalStock })
-      .where(
-        and(
-          eq(schema.stockBalances.materialCode, item.materialCode),
-          eq(schema.stockBalances.locationKey, body.locationKey)
-        )
-      )
-      .run();
-
-    await db.insert(schema.stockOpnames)
-      .values({
-        date,
-        difference: item.physicalStock - item.systemStock,
-        location: body.locationName,
-        material: item.materialName,
-        number,
-        officer: body.officer ?? "Admin",
-        physicalStock: item.physicalStock,
-        systemStock: item.systemStock
-      })
-      .run();
-  }
-
-  return NextResponse.json({ number, ok: true });
+  return stockPost(request, "Opname", async (tx, body, actor, number, date) => {
+    const location = await resolveLocation(tx, body.locationKey, body.locationName);
+    if (!Array.isArray(body.items) || body.items.some((item) => !item || typeof item !== "object" || Array.isArray(item))) throw new ApiError("Pilih bahan baku opname.");
+    const input = body.items.map((item) => ({ code: item.materialCode, name: item.materialName,
+      qty: integer(item.physicalStock, "Stok fisik"), expected: integer(item.systemStock, "Stok sistem", -Number.MAX_SAFE_INTEGER),
+      note: typeof item.note === "string" ? item.note.trim().slice(0, 500) : "" }));
+    await resolveItems(tx, items(input));
+    for (const item of input) if (item.qty !== item.expected && item.note.length < 3) throw new ApiError(`Isi alasan koreksi stok ${item.name}.`);
+    const updated = await writeStock(tx, actor, number, date, "Opname", input.map((item) => ({ materialCode: item.code, locationKey: location.key, physical: item.qty, expected: item.expected, note: item.note || "Opname tanpa perubahan stok" })));
+    await tx.insert(schema.stockOpnames).values(updated.map((row) => ({ number, date, location: location.name,
+      material: input.find((item) => item.code === row.materialCode)!.name, systemStock: row.before,
+      physicalStock: row.after, difference: row.delta, officer: actor.name }))).run();
+  }, true);
 }

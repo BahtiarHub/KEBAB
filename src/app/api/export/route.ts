@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { db, ensureDatabase } from "@/db";
 import * as schema from "@/db/schema";
+import { accessResponse } from "@/lib/api-access";
 
 const transactionTypeByExport: Record<string, string> = {
   belanja: "Belanja",
@@ -343,6 +344,8 @@ function excelResponse(type: string, tables: ExportTable[]) {
 }
 
 export async function GET(request: Request) {
+  const denied = await accessResponse(request);
+  if (denied) return denied;
   await ensureDatabase();
 
   const { searchParams } = new URL(request.url);

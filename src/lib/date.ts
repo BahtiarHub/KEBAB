@@ -26,7 +26,8 @@ const reportMonthIndexes: Record<string, number> = {
 export function parseReportDate(inputDate: string) {
   const isoDate = inputDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (isoDate) {
-    return new Date(Date.UTC(Number(isoDate[1]), Number(isoDate[2]) - 1, Number(isoDate[3])));
+    const parsed = new Date(Date.UTC(Number(isoDate[1]), Number(isoDate[2]) - 1, Number(isoDate[3])));
+    return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === inputDate ? parsed : null;
   }
 
   const [day, month, year] = inputDate.trim().split(/\s+/);
@@ -36,5 +37,11 @@ export function parseReportDate(inputDate: string) {
   }
 
   const parsedDate = new Date(Date.UTC(Number(year), monthIndex, Number(day)));
-  return Number.isNaN(parsedDate.getTime()) ? null : parsedDate;
+  return Number.isNaN(parsedDate.getTime()) || parsedDate.getUTCDate() !== Number(day) || parsedDate.getUTCMonth() !== monthIndex ? null : parsedDate;
+}
+
+export function getBusinessDate() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Jakarta", year: "numeric", month: "2-digit", day: "2-digit"
+  }).format(new Date());
 }

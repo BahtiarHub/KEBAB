@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { accessResponse } from "@/lib/api-access";
 
 import {
   ensureDatabase,
@@ -10,6 +11,8 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ code: string }> }
 ) {
+  const denied = await accessResponse(request, true);
+  if (denied) return denied;
   await ensureDatabase();
 
   const { code } = await params;

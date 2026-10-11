@@ -8,6 +8,7 @@
     "db:push": "drizzle-kit push",
     "start": "next start",
     "lint": "next lint",
+    "test:stock": "node --test tests/stock-flow.test.cjs",
     "db:generate": "drizzle-kit generate",
     "db:studio": "drizzle-kit studio"
   },

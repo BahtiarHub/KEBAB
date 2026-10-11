@@ -187,3 +187,35 @@ export const savingsTransactions = sqliteTable("savings_transactions", {
 
 export type MaterialRow = typeof materials.$inferSelect;
 export type StockBalanceRow = typeof stockBalances.$inferSelect;
+
+export const stockRequests = sqliteTable("stock_requests", {
+  key: text("key").primaryKey(),
+  userId: text("user_id").notNull(),
+  fingerprint: text("fingerprint").notNull(),
+  number: text("number").notNull(),
+  createdAt: integer("created_at").notNull()
+});
+
+export const stockBaselines = sqliteTable("stock_baselines", {
+  key: text("key").primaryKey(),
+  materialCode: text("material_code").notNull(),
+  locationKey: text("location_key").notNull(),
+  qty: integer("qty").notNull(),
+  lastLegacyDate: text("last_legacy_date"),
+  recordedAt: integer("recorded_at").notNull()
+});
+
+export const stockMovements = sqliteTable("stock_movements", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  number: text("number").notNull(),
+  date: text("date").notNull(),
+  materialCode: text("material_code").notNull(),
+  locationKey: text("location_key").notNull(),
+  source: text("source").$type<"Belanja" | "Distribusi" | "Penjualan" | "Opname">().notNull(),
+  delta: integer("delta").notNull(),
+  beforeQty: integer("before_qty").notNull(),
+  afterQty: integer("after_qty").notNull(),
+  userId: text("user_id").notNull(),
+  note: text("note").notNull(),
+  recordedAt: integer("recorded_at").notNull()
+});

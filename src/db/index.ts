@@ -14,7 +14,7 @@ const databaseUrl =
 
 if (databaseUrl.startsWith("file:")) {
   const dbPath = databaseUrl.replace(/^file:/, "");
-  const dbDir = path.dirname(path.join(process.cwd(), dbPath));
+  const dbDir = path.dirname(path.resolve(process.cwd(), dbPath));
 
   if (!fs.existsSync(dbDir)) {
     fs.mkdirSync(dbDir, { recursive: true });
@@ -175,6 +175,23 @@ async function createTables() {
       direction TEXT NOT NULL DEFAULT 'credit',
       created_at INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS stock_requests (
+      key TEXT PRIMARY KEY, user_id TEXT NOT NULL, fingerprint TEXT NOT NULL,
+      number TEXT NOT NULL, created_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS stock_baselines (
+      key TEXT PRIMARY KEY, material_code TEXT NOT NULL, location_key TEXT NOT NULL,
+      qty INTEGER NOT NULL, last_legacy_date TEXT, recorded_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS stock_movements (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, number TEXT NOT NULL, date TEXT NOT NULL,
+      material_code TEXT NOT NULL, location_key TEXT NOT NULL, source TEXT NOT NULL,
+      delta INTEGER NOT NULL, before_qty INTEGER NOT NULL, after_qty INTEGER NOT NULL,
+      user_id TEXT NOT NULL, note TEXT NOT NULL, recorded_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS stock_movement_lookup_idx
+      ON stock_movements(location_key, material_code, date);
   `);
 
   const savingsColumns = await libsql.execute("PRAGMA table_info(savings_transactions)");
@@ -403,7 +420,10 @@ async function migrateLegacyMonthlyParameters() {
 }
 
 export function ensureDatabase() {
-  prepared ??= createTables().then(seedAppData).then(migrateLegacyMonthlyParameters);
+  prepared ??= createTables().then(seedAppData).then(migrateLegacyMonthlyParameters).catch((error) => {
+    prepared = null;
+    throw error;
+  });
   return prepared;
 }
 

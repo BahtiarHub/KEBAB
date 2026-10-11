@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import { db, ensureDatabase } from "@/db";
 import * as schema from "@/db/schema";
 import { auth, ensureAuthSeed } from "@/lib/auth";
+import { accessResponse } from "@/lib/api-access";
 
 function slugFromName(name: string) {
   return name
@@ -27,7 +28,9 @@ async function uniqueLocalEmail(name: string) {
   return email;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const denied = await accessResponse(request, true);
+  if (denied) return denied;
   await ensureDatabase();
   await ensureAuthSeed();
 
@@ -45,6 +48,8 @@ export async function GET() {
 }
 
 export async function PATCH(request: Request) {
+  const denied = await accessResponse(request, true);
+  if (denied) return denied;
   await ensureDatabase();
 
   const body = (await request.json()) as {
@@ -138,6 +143,8 @@ export async function PATCH(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const denied = await accessResponse(request, true);
+  if (denied) return denied;
   await ensureDatabase();
   await ensureAuthSeed();
 
@@ -153,23 +160,27 @@ export async function POST(request: Request) {
   }
 
   const email = body.email?.trim() || await uniqueLocalEmail(body.name);
+  if (await db.select({ id: schema.user.id }).from(schema.user).where(eq(schema.user.email, email)).get()) {
+    return NextResponse.json({ error: "User sudah ada" }, { status: 400 });
+  }
 
   try {
     const result = await auth.api.signUpEmail({
       body: {
         email,
         name: body.name.trim(),
-        password: body.password,
-        role: body.role
+        password: body.password
       }
     });
 
+    const created = await db.select({ id: schema.user.id }).from(schema.user).where(eq(schema.user.id, result.user.id)).get();
+    if (!created) return NextResponse.json({ error: "User sudah ada atau gagal dibuat" }, { status: 400 });
     await db.update(schema.user)
       .set({ role: body.role, updatedAt: new Date() })
-      .where(eq(schema.user.email, email))
+      .where(eq(schema.user.id, result.user.id))
       .run();
 
-    return NextResponse.json({ ok: true, user: result.user });
+    return NextResponse.json({ ok: true, user: { ...result.user, role: body.role } });
   } catch {
     return NextResponse.json(
       { error: "User sudah ada atau gagal dibuat" },
@@ -179,6 +190,8 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const denied = await accessResponse(request, true);
+  if (denied) return denied;
   await ensureDatabase();
   await ensureAuthSeed();
 

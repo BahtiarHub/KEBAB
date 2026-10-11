@@ -1,6 +1,7 @@
 import { toNextJsHandler } from "better-auth/next-js";
 
 import { auth, ensureAuthSeed } from "@/lib/auth";
+import { NextResponse } from "next/server";
 
 const handlers = toNextJsHandler(auth);
 
@@ -10,6 +11,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  if (/\/sign-up\/email\/?$/.test(new URL(request.url).pathname)) {
+    return NextResponse.json({ error: "Pembuatan user hanya melalui Maintenance User oleh Admin." }, { status: 403 });
+  }
   await ensureAuthSeed();
   return handlers.POST(request);
 }

@@ -36,7 +36,7 @@ import {
   WalletCards,
   X
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -1024,7 +1024,7 @@ export default function Home() {
     savings: false,
     sales: false
   });
-  const appMaterials = backendData?.materials?.length ? backendData.materials : materials;
+  const appMaterials = useMemo(() => backendData?.materials ?? [], [backendData]);
 
   const criticalItems = useMemo(
     () =>
@@ -1069,10 +1069,9 @@ export default function Home() {
 
   async function loadBootstrap() {
     const response = await fetch("/api/bootstrap", { cache: "no-store" });
-    if (response.ok) {
-      const payload = (await response.json()) as BackendBootstrap;
-      setBackendData(payload);
-    }
+    if (!response.ok) throw new Error("Data gagal dimuat. Silakan login kembali atau muat ulang halaman.");
+    const payload = (await response.json()) as BackendBootstrap;
+    setBackendData(payload);
   }
 
   async function handleLogin(username: string, password: string) {
@@ -1082,35 +1081,9 @@ export default function Home() {
       throw new Error("Username wajib diisi.");
     }
 
-    const fallbackEmail = normalizedUsername.includes("@")
-      ? normalizedUsername
-      : `${normalizedUsername.replace(/[^a-z0-9]+/g, ".").replace(/^\.+|\.+$/g, "")}@yudhistira.local`;
-    let loginEmail = fallbackEmail;
-    let matchedRole: UserRole = "Operator";
-
-    try {
-      const usersResponse = await fetch("/api/users", { cache: "no-store" });
-
-      if (usersResponse.ok) {
-        const usersPayload = (await usersResponse.json()) as {
-          users?: Array<{ email: string; name: string; role: UserRole }>;
-        };
-        const targetUser = usersPayload.users?.find(
-          (user) =>
-            (user.name.trim().toLowerCase() === normalizedUsername ||
-              user.email.trim().toLowerCase() === normalizedUsername)
-        );
-
-        loginEmail = targetUser?.email ?? fallbackEmail;
-        matchedRole = targetUser?.role ?? matchedRole;
-      }
-    } catch {
-      loginEmail = fallbackEmail;
-    }
-
-    const response = await fetch("/api/auth/sign-in/email", {
+    const response = await fetch("/api/login", {
       body: JSON.stringify({
-        email: loginEmail,
+        username: normalizedUsername,
         password,
         rememberMe: true
       }),
@@ -1125,13 +1098,16 @@ export default function Home() {
     }
 
     const result = (await response.json()) as { user?: { role?: UserRole } };
-    setRole(result.user?.role ?? matchedRole);
+    setRole(result.user?.role ?? "Operator");
     setIsAuthenticated(true);
     setIsBootstrapping(true);
     setOpenGroups({ kupatTahu: false, report: false, savings: false, sales: false });
     setActiveView("Dashboard");
     try {
       await loadBootstrap();
+    } catch (error) {
+      setIsAuthenticated(false);
+      throw error;
     } finally {
       setIsBootstrapping(false);
     }
@@ -1374,13 +1350,13 @@ export default function Home() {
                 label="Biaya Lain lain"
                 onClick={() => setActiveView("Biaya Lain lain")}
               />
-              <NavButton
+              {currentRole === "Admin" ? <NavButton
                 active={activeView === "Opname Stok"}
                 collapsed={sidebarCollapsed}
                 icon={PackageMinus}
                 label="Opname Stok"
                 onClick={() => setActiveView("Opname Stok")}
-              />
+              /> : null}
 
               <NavGroup
                 collapsed={sidebarCollapsed}
@@ -1578,7 +1554,7 @@ export default function Home() {
                 )}
               />
             ) : null}
-            {activeView === "Opname Stok" ? (
+            {activeView === "Opname Stok" && currentRole === "Admin" ? (
               <StockOpnameView materials={appMaterials} onSaved={loadBootstrap} />
             ) : null}
             {activeView === "Report" ? (
@@ -2188,6 +2164,35 @@ function LineChart({
   );
 }
 
+function useStockSubmit(setStatus: (message: string) => void) {
+  const [isSaving, setIsSaving] = useState(false);
+  const busy = useRef(false);
+  const pending = useRef<{ payload: string; key: string } | null>(null);
+
+  async function submit(url: string, body: object, onSuccess: (result: { number: string }) => Promise<void>) {
+    if (busy.current) return;
+    const payload = JSON.stringify(body);
+    if (!pending.current || pending.current.payload !== payload) pending.current = { payload, key: crypto.randomUUID() };
+    busy.current = true;
+    setIsSaving(true);
+    let storedNumber: string | null = null;
+    try {
+      const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": pending.current.key }, body: payload });
+      const result = await response.json() as { number: string; error?: string };
+      if (!response.ok) { setStatus(result.error ?? "Transaksi gagal disimpan."); return; }
+      storedNumber = result.number;
+      await onSuccess(result);
+      pending.current = null;
+    } catch {
+      setStatus(storedNumber ? `Transaksi ${storedNumber} sudah tersimpan, tetapi data gagal dimuat ulang. Muat ulang halaman.` : "Koneksi terputus. Coba simpan kembali dengan data yang sama agar transaksi tidak tercatat dua kali.");
+    } finally {
+      busy.current = false;
+      setIsSaving(false);
+    }
+  }
+  return { isSaving, submit };
+}
+
 function SalesView({
   materials,
   onSaved,
@@ -2237,6 +2242,7 @@ function SalesView({
     salesCosts.salary -
     salesCosts.otherCost;
   const [saveStatus, setSaveStatus] = useState("");
+  const { isSaving, submit } = useStockSubmit(setSaveStatus);
 
   function setKioskSaleQty(code: string, value: number) {
     setSaleQtyByKiosk((current) => ({
@@ -2264,8 +2270,7 @@ function SalesView({
   async function saveSales() {
     setSaveStatus("Menyimpan penjualan ke database...");
     const kioskName = locations.find((item) => item.key === selectedKiosk)?.name ?? selectedKiosk;
-    const response = await fetch("/api/sales", {
-      body: JSON.stringify({
+    await submit("/api/sales", {
         cashOwner: ownerCashReceived,
         costs: salesCosts,
         date: salesDate,
@@ -2280,20 +2285,13 @@ function SalesView({
         kioskKey: selectedKiosk,
         modal: totalSalesModal,
         totalSales
-      }),
-      headers: { "Content-Type": "application/json" },
-      method: "POST"
+    }, async (result) => {
+      setSaveStatus(`Penjualan tersimpan dengan nomor ${result.number}.`);
+      setSaleQtyByKiosk((current) => ({ ...current, [selectedKiosk]: {} }));
+      setSalesCostsByKiosk((current) => ({ ...current, [selectedKiosk]: { grabGofood: 0, otherCost: 0, qris: 0, salary: 0 } }));
+      setSalesDate("");
+      await onSaved();
     });
-
-    if (!response.ok) {
-      setSaveStatus("Penjualan gagal disimpan.");
-      return;
-    }
-
-    const result = (await response.json()) as { number: string };
-    setSaveStatus(`Penjualan tersimpan ke backend dengan nomor ${result.number}.`);
-    setSalesDate("");
-    await onSaved();
   }
 
   return (
@@ -2418,7 +2416,7 @@ function SalesView({
                 Omset {formatCurrency(totalSales)} / Cash {formatCurrency(ownerCashReceived)}
               </p>
             </div>
-            <Button onClick={saveSales}>
+            <Button disabled={isSaving} onClick={saveSales}>
               <PackageMinus />
               Simpan Penjualan
             </Button>
@@ -2437,9 +2435,7 @@ function PurchaseView({
   onSaved: () => Promise<void>;
 }) {
   const [purchaseQty, setPurchaseQty] = useState<NumberMap>({});
-  const [purchasePrices, setPurchasePrices] = useState<NumberMap>(() =>
-    Object.fromEntries(materials.map((item) => [item.code, item.buy])) as NumberMap
-  );
+  const [purchasePrices, setPurchasePrices] = useState<NumberMap>({});
   const [editablePurchasePrices, setEditablePurchasePrices] = useState<
     Record<string, boolean>
   >({});
@@ -2448,6 +2444,7 @@ function PurchaseView({
   const [purchaseOfficer, setPurchaseOfficer] = useState("Operator Gudang");
   const [shippingCost, setShippingCost] = useState(0);
   const [saveStatus, setSaveStatus] = useState("");
+  const { isSaving, submit } = useStockSubmit(setSaveStatus);
   const subtotal = materials.reduce(
     (total, item) =>
       total + (purchaseQty[item.code] ?? 0) * (purchasePrices[item.code] ?? item.buy),
@@ -2470,8 +2467,7 @@ function PurchaseView({
 
   async function savePurchase() {
     setSaveStatus("Menyimpan belanja dan harga beli...");
-    const response = await fetch("/api/purchases", {
-      body: JSON.stringify({
+    await submit("/api/purchases", {
         date: purchaseDate,
         items: materials.map((item) => ({
           code: item.code,
@@ -2482,20 +2478,15 @@ function PurchaseView({
         note: purchaseNote,
         officer: purchaseOfficer,
         shippingCost
-      }),
-      headers: { "Content-Type": "application/json" },
-      method: "POST"
+    }, async (result) => {
+      setSaveStatus(`Belanja tersimpan dengan nomor ${result.number}.`);
+      setPurchaseQty({});
+      setPurchasePrices({});
+      setShippingCost(0);
+      setEditablePurchasePrices({});
+      setPurchaseDate("");
+      await onSaved();
     });
-
-    if (!response.ok) {
-      setSaveStatus("Belanja gagal disimpan.");
-      return;
-    }
-
-    const result = (await response.json()) as { number: string };
-    setSaveStatus(`Belanja tersimpan ke backend dengan nomor ${result.number}.`);
-    setPurchaseDate("");
-    await onSaved();
   }
 
   return (
@@ -2642,7 +2633,7 @@ function PurchaseView({
               {formatNumber(purchaseItemCount)} item / {formatCurrency(subtotal + shippingCost)}
             </p>
           </div>
-          <Button onClick={savePurchase}>
+          <Button disabled={isSaving} onClick={savePurchase}>
             <ShoppingCart />
             Simpan Belanja
           </Button>
@@ -2665,6 +2656,7 @@ function DistributionView({
   const [distributionQty, setDistributionQty] = useState<NumberMap>({});
   const [distributionOfficer, setDistributionOfficer] = useState("Admin");
   const [saveStatus, setSaveStatus] = useState("");
+  const { isSaving, submit } = useStockSubmit(setSaveStatus);
   const distributionItemCount = materials.filter(
     (item) => (distributionQty[item.code] ?? 0) > 0
   ).length;
@@ -2677,8 +2669,7 @@ function DistributionView({
     setSaveStatus("Menyimpan distribusi ke database...");
     const destinationName =
       kiosks.find((kiosk) => kiosk.key === destination)?.name ?? destination;
-    const response = await fetch("/api/distributions", {
-      body: JSON.stringify({
+    await submit("/api/distributions", {
         date: distributionDate,
         destination,
         destinationName,
@@ -2688,23 +2679,14 @@ function DistributionView({
           qty: distributionQty[item.code] ?? 0
         })),
         officer: distributionOfficer
-      }),
-      headers: { "Content-Type": "application/json" },
-      method: "POST"
+    }, async (result) => {
+      setSaveStatus(`Distribusi tersimpan dengan nomor ${result.number}.`);
+      setDestination("wadas");
+      setDistributionDate("");
+      setDistributionOfficer("");
+      setDistributionQty({});
+      await onSaved();
     });
-
-    if (!response.ok) {
-      setSaveStatus("Distribusi gagal disimpan.");
-      return;
-    }
-
-    const result = (await response.json()) as { number: string };
-    setSaveStatus(`Distribusi tersimpan ke backend dengan nomor ${result.number}.`);
-    setDestination("wadas");
-    setDistributionDate("");
-    setDistributionOfficer("");
-    setDistributionQty({});
-    await onSaved();
   }
 
   return (
@@ -2816,7 +2798,7 @@ function DistributionView({
               {formatNumber(distributionItemCount)} item / {formatNumber(distributionTotalQty)} qty
             </p>
           </div>
-          <Button onClick={saveDistribution}>
+          <Button disabled={isSaving} onClick={saveDistribution}>
             <Truck />
             Simpan Distribusi
           </Button>
@@ -5253,6 +5235,7 @@ function StockView({ materials }: { materials: Material[] }) {
 }
 
 type StockMutationApiResponse = {
+  integrity: { openingVerified: boolean; warnings: string[] };
   material: { code: string; name: string };
   location: { key: KioskKey; name: string };
   period: { days: number; endDate: string; startDate: string };
@@ -5372,15 +5355,7 @@ function StockMutationView({ materials }: { materials: Material[] }) {
   };
   const periodMovements = data?.rows ?? [];
   const balanceStatus = data?.reconciliation
-    ? {
-        ...data.reconciliation,
-        label:
-          data.reconciliation.difference === null
-            ? "Belum Dicek"
-            : data.reconciliation.difference === 0
-              ? "Sesuai"
-              : `Selisih ${formatNumber(data.reconciliation.difference)}`
-      }
+    ? data.reconciliation
     : {
         difference: null,
         label: "Belum Dicek",
@@ -5449,7 +5424,7 @@ function StockMutationView({ materials }: { materials: Material[] }) {
       ) : null}
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <SummaryTile label="Stok Awal" value={formatNumber(summary.openingStock)} />
+        <SummaryTile label={data?.integrity.openingVerified === false ? "Stok Awal (Rekonstruksi)" : "Stok Awal"} value={formatNumber(summary.openingStock)} />
         <SummaryTile label="Stok Masuk" value={formatNumber(summary.totalIn)} />
         <SummaryTile label="Stok Keluar" value={formatNumber(summary.totalOut)} />
         <SummaryTile label="Stok Akhir" value={formatNumber(summary.endingStock)} />
@@ -5461,6 +5436,11 @@ function StockMutationView({ materials }: { materials: Material[] }) {
         </Card>
       </div>
 
+      {data?.integrity.warnings.length ? (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+          {data.integrity.warnings.map((warning) => <p key={warning}>{warning}</p>)}
+        </div>
+      ) : null}
       <Card>
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -5542,6 +5522,8 @@ function StockOpnameView({
   const [selectedLocation, setSelectedLocation] = useState<LocationKey>("gudang");
   const [opnameDate, setOpnameDate] = useState(getTodayInputDate);
   const [lastUpdated, setLastUpdated] = useState("");
+  const { isSaving, submit } = useStockSubmit(setLastUpdated);
+  const [opnameNotes, setOpnameNotes] = useState<Record<string, string>>({});
   const [physicalStockByLocation, setPhysicalStockByLocation] = useState<
     Record<LocationKey, NumberMap>
   >({
@@ -5569,14 +5551,14 @@ function StockOpnameView({
   }
 
   async function updateDatabase() {
-    const response = await fetch("/api/stock-opname", {
-      body: JSON.stringify({
+    await submit("/api/stock-opname", {
         date: opnameDate,
         items: materials.map((item) => {
           const systemStock = item.stock[selectedLocation];
           return {
             materialCode: item.code,
             materialName: item.name,
+            note: opnameNotes[`${selectedLocation}:${item.code}`] ?? "",
             physicalStock: physicalStock[item.code] ?? systemStock,
             systemStock
           };
@@ -5584,21 +5566,14 @@ function StockOpnameView({
         locationKey: selectedLocation,
         locationName: location.name,
         officer: "Admin"
-      }),
-      headers: { "Content-Type": "application/json" },
-      method: "POST"
-    });
-
-    if (response.ok) {
-      const result = (await response.json()) as { number: string };
+    }, async (result) => {
       setLastUpdated(
         `Perubahan ${location.name} tersimpan ke database dengan nomor ${result.number}`
       );
+      setPhysicalStockByLocation((current) => ({ ...current, [selectedLocation]: {} }));
+      setOpnameNotes({});
       await onSaved();
-      return;
-    }
-
-    setLastUpdated("Update database gagal. Silakan coba lagi.");
+    });
   }
 
   return (
@@ -5623,6 +5598,7 @@ function StockOpnameView({
               ))}
             </div>
             <Button
+              disabled={isSaving}
               onClick={updateDatabase}
             >
               <PackageCheck />
@@ -5701,7 +5677,8 @@ function StockOpnameView({
                       {formatNumber(difference)}
                     </TableCell>
                     <TableCell>
-                      <Input placeholder="Catatan koreksi" />
+                      <Input placeholder="Alasan koreksi" value={opnameNotes[`${selectedLocation}:${item.code}`] ?? ""}
+                        onChange={(event) => setOpnameNotes((current) => ({ ...current, [`${selectedLocation}:${item.code}`]: event.target.value }))} />
                     </TableCell>
                   </TableRow>
                 );
@@ -6942,7 +6919,7 @@ function MobileSelect({
       <option value="Kupat Tahu Penjualan">Kupat Tahu - Penjualan</option>
       <option value="Kupat Tahu Report Belanja">Kupat Tahu - Report Belanja</option>
       <option value="Kupat Tahu Report Penjualan">Kupat Tahu - Report Penjualan</option>
-      <option value="Opname Stok">Opname Stok</option>
+      {currentRole === "Admin" ? <option value="Opname Stok">Opname Stok</option> : null}
       <option value="Input Tabungan">Tabungan - Input Tabungan</option>
       <option value="Saldo Tabungan">Tabungan - Saldo Tabungan</option>
       <option value="Semua Penjualan">Report Total Penjualan</option>

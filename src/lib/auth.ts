@@ -17,7 +17,8 @@ export const auth = betterAuth({
     schema
   }),
   emailAndPassword: {
-    enabled: true
+    enabled: true,
+    autoSignIn: false
   },
   plugins: [nextCookies()],
   secret:
@@ -36,7 +37,7 @@ export const auth = betterAuth({
         type: "string",
         required: false,
         defaultValue: "Operator",
-        input: true
+        input: false
       }
     }
   }
@@ -63,6 +64,11 @@ export async function ensureAuthSeed() {
   await ensureDatabase();
 
   if (seeded) {
+    return;
+  }
+
+  if ((await db.select({ id: schema.user.id }).from(schema.user).limit(1).all()).length) {
+    seeded = true;
     return;
   }
 
