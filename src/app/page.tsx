@@ -37,6 +37,7 @@ import {
   X
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { getSavingsPeriodSummary } from "@/lib/savings-summary";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -3158,6 +3159,8 @@ function SavingsBalanceView({
     return years.sort((first, second) => second - first);
   }, [currentYear, rows]);
   const [selectedYear, setSelectedYear] = useState(() => availableYears[0] ?? currentYear);
+  const [filterMonthIndex, setFilterMonthIndex] = useState<number | null>(null);
+  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
   const [selectedMonthIndex, setSelectedMonthIndex] = useState<number | null>(null);
   const [pendingEdit, setPendingEdit] = useState<SavingsTransactionRow | null>(null);
   const [editCategory, setEditCategory] = useState<SavingsCategory | "">("");
@@ -3230,24 +3233,15 @@ function SavingsBalanceView({
   }, [rows, selectedYear]);
   const selectedMonth =
     selectedMonthIndex === null ? null : summary.months[selectedMonthIndex];
-  const categoryBalances = useMemo(() => {
-    const visibleCategories = [
-      ...savingsCategories,
-      ...(rows.some((row) => row.category === "Belum Dikategorikan")
-        ? (["Belum Dikategorikan"] as SavingsCategory[])
-        : [])
-    ];
+  const periodSummary = useMemo(
+    () => getSavingsPeriodSummary(rows, savingsCategories, selectedYear, filterMonthIndex),
+    [rows, selectedYear, filterMonthIndex]
+  );
+  const periodLabel = filterMonthIndex === null ? `Tahun ${selectedYear}` : `${monthOrder[filterMonthIndex]} ${selectedYear}`;
 
-    return visibleCategories.map((category) => ({
-      category,
-      value: rows
-        .filter((row) => row.category === category)
-        .reduce(
-          (total, row) => total + (row.direction === "credit" ? row.amount : -row.amount),
-          0
-        )
-    }));
-  }, [rows]);
+  function toggleCategory(category: string) {
+    setExpandedCategories((current) => ({ ...current, [category]: !current[category] }));
+  }
 
   function beginEditSavingsTransaction(transaction: SavingsTransactionRow) {
     setPendingEdit(transaction);
@@ -3335,24 +3329,39 @@ function SavingsBalanceView({
               <WalletCards className="size-5 text-yellow-600" />
               Saldo Tabungan
             </CardTitle>
-            <CardDescription>Rekap debet, kredit, dan saldo berjalan setiap bulan.</CardDescription>
+            <CardDescription>{periodLabel}</CardDescription>
           </div>
-          <Select
-            className="w-full sm:w-[150px]"
-            value={String(selectedYear)}
-            onChange={(event) => setSelectedYear(Number(event.target.value))}
-          >
-            {availableYears.map((year) => (
-              <option key={year} value={year}>Tahun {year}</option>
-            ))}
-          </Select>
+          <div className="grid w-full grid-cols-2 gap-3 sm:w-auto">
+            <Select
+              aria-label="Filter bulan tabungan"
+              className="w-full sm:w-[180px]"
+              value={filterMonthIndex === null ? "all" : String(filterMonthIndex)}
+              onChange={(event) => {
+                setFilterMonthIndex(event.target.value === "all" ? null : Number(event.target.value));
+                setSelectedMonthIndex(null);
+              }}
+            >
+              <option value="all">Semua Bulan</option>
+              {monthOrder.map((month, index) => <option key={month} value={index}>{month}</option>)}
+            </Select>
+            <Select
+              aria-label="Filter tahun tabungan"
+              className="w-full sm:w-[150px]"
+              value={String(selectedYear)}
+              onChange={(event) => setSelectedYear(Number(event.target.value))}
+            >
+              {availableYears.map((year) => (
+                <option key={year} value={year}>Tahun {year}</option>
+              ))}
+            </Select>
+          </div>
         </CardHeader>
         <CardContent className="space-y-5 pt-6">
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <SummaryTile label="Saldo Awal" value={formatCurrency(summary.openingBalance)} />
-            <SummaryTile label="Total Debet" value={formatCurrency(summary.debit)} />
-            <SummaryTile label="Total Kredit" value={formatCurrency(summary.credit)} />
-            <SummaryTile label="Saldo Akhir" value={formatCurrency(summary.balance)} strong />
+            <SummaryTile label="Saldo Awal Periode" value={formatCurrency(periodSummary.openingBalance)} />
+            <SummaryTile label="Total Keluar / Debet" value={formatCurrency(periodSummary.debit)} />
+            <SummaryTile label="Total Masuk / Kredit" value={formatCurrency(periodSummary.credit)} />
+            <SummaryTile label="Saldo Akhir Periode" value={formatCurrency(periodSummary.balance)} strong />
           </div>
 
           <div>
@@ -3360,7 +3369,7 @@ function SavingsBalanceView({
               Saldo per Kategori
             </p>
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {categoryBalances.map((item) => (
+              {periodSummary.categories.map((item) => (
                 <div
                   key={item.category}
                   className={`rounded-lg border p-3 ${
@@ -3371,14 +3380,14 @@ function SavingsBalanceView({
                 >
                   <p className="text-xs font-bold text-slate-500">{item.category}</p>
                   <p className="mt-1 text-base font-black text-slate-950">
-                    {formatCurrency(item.value)}
+                    {formatCurrency(item.balance)}
                   </p>
                 </div>
               ))}
             </div>
           </div>
 
-          <Table>
+          <Table compact>
             <TableHeader>
               <TableRow>
                 <TableHead className="w-28">Bulan</TableHead>
@@ -3390,7 +3399,7 @@ function SavingsBalanceView({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {summary.months.map((month, monthIndex) => (
+              {summary.months.map((month, monthIndex) => filterMonthIndex !== null && filterMonthIndex !== monthIndex ? null : (
                 <TableRow
                   key={month.label}
                   className={
@@ -3434,6 +3443,91 @@ function SavingsBalanceView({
           </Table>
         </CardContent>
       </Card>
+
+      <section aria-labelledby="savings-category-title">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-4">
+          <h2 id="savings-category-title" className="text-lg font-black text-slate-950">Detail per Kategori</h2>
+          <span className="text-sm font-medium text-slate-500">{periodLabel}</span>
+        </div>
+        {periodSummary.categories.map((category, categoryIndex) => {
+          const expanded = expandedCategories[category.category] ?? false;
+          const panelId = `savings-category-panel-${categoryIndex}`;
+          const headingId = `savings-category-heading-${categoryIndex}`;
+          return (
+            <div key={category.category} className="border-b border-slate-200">
+              <h3>
+                <button
+                  id={headingId}
+                  aria-controls={panelId}
+                  aria-expanded={expanded}
+                  className="flex w-full items-center justify-between gap-4 py-5 text-left transition-colors hover:bg-yellow-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-500"
+                  onClick={() => toggleCategory(category.category)}
+                >
+                  <span className="flex min-w-0 items-center gap-3">
+                    <ChevronDown aria-hidden="true" className={`size-5 shrink-0 text-yellow-700 transition-transform ${expanded ? "rotate-180" : ""}`} />
+                    <span className="min-w-0">
+                      <span className="block break-words font-bold text-slate-950">{category.category}</span>
+                      <span className="mt-1 block text-xs text-slate-500">{formatNumber(category.transactions.length)} transaksi</span>
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-right">
+                    <span className="block text-xs font-medium text-slate-500">Saldo</span>
+                    <span className={`mt-1 block text-sm font-black tabular-nums sm:text-base ${category.balance < 0 ? "text-rose-700" : "text-slate-950"}`}>{formatCurrency(category.balance)}</span>
+                  </span>
+                </button>
+              </h3>
+              <div id={panelId} role="region" aria-labelledby={headingId} hidden={!expanded} className="space-y-4 pb-5">
+                <dl className="grid grid-cols-2 gap-x-6 gap-y-3 border-y border-slate-100 py-4 text-sm sm:grid-cols-4">
+                  <div><dt className="text-xs text-slate-500">Saldo Awal</dt><dd className="mt-1 font-bold tabular-nums">{formatCurrency(category.openingBalance)}</dd></div>
+                  <div><dt className="text-xs text-slate-500">Masuk / Kredit</dt><dd className="mt-1 font-bold tabular-nums text-emerald-700">{formatCurrency(category.credit)}</dd></div>
+                  <div><dt className="text-xs text-slate-500">Keluar / Debet</dt><dd className="mt-1 font-bold tabular-nums text-rose-700">{formatCurrency(category.debit)}</dd></div>
+                  <div><dt className="text-xs text-slate-500">Saldo Akhir</dt><dd className="mt-1 font-bold tabular-nums">{formatCurrency(category.balance)}</dd></div>
+                </dl>
+                <Table compact aria-label={`Detail transaksi kategori ${category.category}`}>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Tanggal</TableHead><TableHead>Keterangan</TableHead>
+                      <TableHead className="text-right">Masuk / Kredit</TableHead>
+                      <TableHead className="text-right">Keluar / Debet</TableHead>
+                      <TableHead className="text-right">Saldo</TableHead>
+                      <TableHead className="text-center">Aksi</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    <TableRow className="bg-yellow-50/60">
+                      <TableCell>-</TableCell><TableCell className="whitespace-normal font-semibold">Saldo Awal {periodLabel}</TableCell>
+                      <TableCell className="text-right">-</TableCell><TableCell className="text-right">-</TableCell>
+                      <TableCell className="text-right font-bold">{formatNumber(category.openingBalance)}</TableCell><TableCell />
+                    </TableRow>
+                    {category.transactions.map((transaction) => (
+                      <TableRow key={transaction.id}>
+                        <TableCell className="whitespace-nowrap">{transaction.date}</TableCell>
+                        <TableCell className="min-w-[180px] whitespace-normal break-words font-medium">{transaction.note}</TableCell>
+                        <TableCell className="text-right font-semibold text-emerald-700">{transaction.direction === "credit" ? formatNumber(transaction.amount) : "-"}</TableCell>
+                        <TableCell className="text-right font-semibold text-rose-700">{transaction.direction === "debit" ? formatNumber(transaction.amount) : "-"}</TableCell>
+                        <TableCell className="text-right font-bold">{formatNumber(transaction.balance)}</TableCell>
+                        <TableCell>
+                          <div className="flex justify-center gap-2">
+                            <Button aria-label={`Edit kategori transaksi ${transaction.note}`} size="sm" variant="outline" onClick={() => beginEditSavingsTransaction(transaction)}><Pencil />Edit</Button>
+                            <Button aria-label={`Hapus transaksi ${transaction.note}`} size="sm" variant="destructive" onClick={() => setPendingDelete(transaction)}><Trash2 />Hapus</Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {!category.transactions.length ? <TableRow><TableCell colSpan={6} className="py-8 text-center text-slate-500">Tidak ada transaksi pada {periodLabel}.</TableCell></TableRow> : null}
+                    <TableRow className="bg-yellow-50/60">
+                      <TableCell>-</TableCell><TableCell className="whitespace-normal font-bold">Total {periodLabel}</TableCell>
+                      <TableCell className="text-right font-bold text-emerald-700">{formatNumber(category.credit)}</TableCell>
+                      <TableCell className="text-right font-bold text-rose-700">{formatNumber(category.debit)}</TableCell>
+                      <TableCell className="text-right font-bold">{formatNumber(category.balance)}</TableCell><TableCell />
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          );
+        })}
+      </section>
 
       {selectedMonth ? (
         <DetailDrawer
