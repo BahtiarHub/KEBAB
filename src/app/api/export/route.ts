@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { db, ensureDatabase } from "@/db";
 import * as schema from "@/db/schema";
 import { accessResponse } from "@/lib/api-access";
+import { getAnnualFinance } from "@/lib/annual-finance";
 
 const transactionTypeByExport: Record<string, string> = {
   belanja: "Belanja",
@@ -351,6 +352,18 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const rawType = searchParams.get("type")?.toLowerCase() ?? "semua";
   const transactionType = transactionTypeByExport[rawType];
+
+  if (rawType === "report-tahunan") {
+    const year = Number(searchParams.get("year"));
+    if (!Number.isInteger(year) || year < 1900 || year > 9999) return NextResponse.json({ error: "Tahun laporan tidak valid." }, { status: 400 });
+    const [transactions, parameters, values] = await Promise.all([
+      withDetails(), db.select().from(schema.monthlyParameters).all(), db.select().from(schema.monthlyParameterValues).all()
+    ]);
+    const annual = getAnnualFinance(transactions, parameters, values, year);
+    const columns = (label: string, row: typeof annual.totals) => ({ Bulan: label, Omset: row.omset, Gaji: row.salary, "Pendapatan Kotor": row.grossIncome, Biaya: row.costs });
+    return excelResponse(`report-tahunan-${year}`, [{ title: `Report Tahunan ${year} - Kebab dan Kupat Tahu`,
+      rows: [...annual.rows.map((row) => columns(row.month, row)), columns(`Total ${year}`, annual.totals)] }]);
+  }
 
   if (rawType === "neraca") {
     const transactions = await withDetails();

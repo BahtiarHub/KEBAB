@@ -10,6 +10,7 @@
     "lint": "next lint",
     "test:stock": "node --test tests/stock-flow.test.cjs",
     "test:savings": "node --test tests/savings-summary.test.cjs",
+    "test:finance": "node --test tests/annual-finance.test.cjs",
     "db:generate": "drizzle-kit generate",
     "db:studio": "drizzle-kit studio"
   },

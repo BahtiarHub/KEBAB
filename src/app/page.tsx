@@ -38,6 +38,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getSavingsPeriodSummary } from "@/lib/savings-summary";
+import { getAnnualFinance, getAnnualFinanceYears } from "@/lib/annual-finance";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -73,6 +74,7 @@ type View =
   | "Report"
   | "Semua Penjualan"
   | "Neraca Keuangan"
+  | "Report Tahunan"
   | "Opname Stok"
   | "Parameter"
   | "Setting Harga Jual"
@@ -1416,6 +1418,13 @@ export default function Home() {
               />
 
               <NavButton
+                active={activeView === "Report Tahunan"}
+                collapsed={sidebarCollapsed}
+                icon={CalendarDays}
+                label="Report Tahunan"
+                onClick={() => setActiveView("Report Tahunan")}
+              />
+              <NavButton
                 active={activeView === "Neraca Keuangan"}
                 collapsed={sidebarCollapsed}
                 icon={Calculator}
@@ -1573,6 +1582,13 @@ export default function Home() {
                 monthlyParameters={backendData?.monthlyParameters}
                 monthlyParameterValues={backendData?.monthlyParameterValues}
                 reports={backendData?.reports}
+              />
+            ) : null}
+            {activeView === "Report Tahunan" ? (
+              <AnnualFinanceView
+                reports={backendData?.reports ?? []}
+                monthlyParameters={backendData?.monthlyParameters ?? []}
+                monthlyParameterValues={backendData?.monthlyParameterValues ?? []}
               />
             ) : null}
             {activeView === "Monitoring Stok" ? (
@@ -4920,6 +4936,95 @@ function MaintenanceUserView({
   );
 }
 
+function AnnualFinanceView({ reports, monthlyParameters, monthlyParameterValues }: {
+  reports: TransactionReportRow[];
+  monthlyParameters: MonthlyParameterDefinition[];
+  monthlyParameterValues: MonthlyParameterValue[];
+}) {
+  const currentYear = new Date().getFullYear();
+  const [selectedYear, setSelectedYear] = useState(currentYear);
+  const [exportStatus, setExportStatus] = useState("");
+  const [isExporting, setIsExporting] = useState(false);
+  const years = useMemo(() => getAnnualFinanceYears(reports, monthlyParameterValues, currentYear), [reports, monthlyParameterValues, currentYear]);
+  const annual = useMemo(() => getAnnualFinance(reports, monthlyParameters, monthlyParameterValues, selectedYear), [reports, monthlyParameters, monthlyParameterValues, selectedYear]);
+
+  async function exportAnnual() {
+    setIsExporting(true);
+    setExportStatus("");
+    try {
+      const response = await fetch(`/api/export?type=report-tahunan&year=${selectedYear}`, { cache: "no-store" });
+      if (!response.ok) throw new Error("Export laporan tahunan gagal. Silakan coba kembali.");
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `report-tahunan-${selectedYear}.xls`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error) { setExportStatus(error instanceof Error ? error.message : "Export laporan gagal."); }
+    finally { setIsExporting(false); }
+  }
+
+  return (
+    <section className="space-y-5" aria-labelledby="annual-finance-title">
+      <div className="flex flex-col gap-4 border-b border-slate-200 pb-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 id="annual-finance-title" className="text-lg font-black text-slate-950">Report Tahunan</h2>
+          <p className="mt-1 text-sm text-slate-500">Kebab dan Kupat Tahu</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Select aria-label="Tahun report tahunan" className="w-36" value={String(selectedYear)} onChange={(event) => setSelectedYear(Number(event.target.value))}>
+            {years.map((year) => <option key={year} value={year}>Tahun {year}</option>)}
+          </Select>
+          <Button disabled={isExporting} onClick={exportAnnual}><Download />Export Excel</Button>
+        </div>
+      </div>
+      <dl className="grid grid-cols-2 gap-x-5 gap-y-4 border-b border-slate-200 pb-5 lg:grid-cols-4">
+        {[
+          { label: "Omset Tahunan", value: annual.totals.omset, color: "text-slate-950" },
+          { label: "Gaji Tahunan", value: annual.totals.salary, color: "text-slate-950" },
+          { label: "Pendapatan Kotor", value: annual.totals.grossIncome, color: "text-emerald-700" },
+          { label: "Biaya Tahunan", value: annual.totals.costs, color: "text-rose-700" }
+        ].map((metric) => (
+          <div key={metric.label} className="min-w-0">
+            <dt className="text-xs font-bold text-slate-500">{metric.label}</dt>
+            <dd className={`mt-2 break-words text-base font-black tabular-nums sm:text-lg ${metric.color}`}>{formatCurrency(metric.value)}</dd>
+          </div>
+        ))}
+      </dl>
+      <Table aria-label={`Report keuangan tahunan ${selectedYear}`}>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-36">Bulan</TableHead>
+            <TableHead className="text-right">Omset</TableHead>
+            <TableHead className="text-right">Gaji</TableHead>
+            <TableHead className="text-right" title="Omset dikurangi modal terjual">Pendapatan Kotor</TableHead>
+            <TableHead className="text-right" title="Parameter biaya bulanan dan biaya lain-lain; gaji ditampilkan terpisah">Biaya</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {annual.rows.map((row) => (
+            <TableRow key={row.month} className={row.hasActivity ? "" : "opacity-60"}>
+              <TableCell className="whitespace-nowrap font-semibold">{row.month}</TableCell>
+              <TableCell className="text-right">{formatNumber(row.omset)}</TableCell>
+              <TableCell className="text-right">{formatNumber(row.salary)}</TableCell>
+              <TableCell className={`text-right font-semibold ${row.grossIncome < 0 ? "text-rose-700" : "text-emerald-700"}`}>{formatNumber(row.grossIncome)}</TableCell>
+              <TableCell className="text-right text-rose-700">{formatNumber(row.costs)}</TableCell>
+            </TableRow>
+          ))}
+          <TableRow className="bg-yellow-100/70 font-black">
+            <TableCell className="whitespace-nowrap">Total {selectedYear}</TableCell>
+            <TableCell className="text-right">{formatNumber(annual.totals.omset)}</TableCell>
+            <TableCell className="text-right">{formatNumber(annual.totals.salary)}</TableCell>
+            <TableCell className="text-right">{formatNumber(annual.totals.grossIncome)}</TableCell>
+            <TableCell className="text-right">{formatNumber(annual.totals.costs)}</TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
+      <StatusToast message={exportStatus} onDismiss={() => setExportStatus("")} />
+    </section>
+  );
+}
+
 function FinanceView({
   monthlyParameters,
   monthlyParameterValues,
@@ -7031,6 +7136,7 @@ function MobileSelect({
         </option>
       ))}
       <option value="Neraca Keuangan">Neraca Keuangan</option>
+      <option value="Report Tahunan">Report Tahunan</option>
       <option value="Monitoring Stok">Monitoring Stok</option>
       <option value="Mutasi Stok">Mutasi Stok</option>
       {currentRole === "Admin" ? (
